@@ -1,0 +1,23 @@
+[package]
+name = "gamuboy"
+version = "0.1.0"
+edition = "2021"
+authors = ["Axel Maulion"]
+description = "A modular Game Boy emulation core written in Rust"
+license = "MIT"
+repository = "https://github.com/axelmln/gamuboy-rs"
+homepage = "https://github.com/axelmln/gamuboy-rs"
+keywords = ["emulator", "gameboy", "rust", "engine", "core", "library"]
+categories = ["emulators", "games"]
+readme = "README.md"
+
+[lib]
+name = "gamuboy"
+path = "src/lib.rs"
+
+[dependencies]
+chrono = "0.4"
+crc = "3.3.0"
+
+[profile.release]
+lto = "thin"
