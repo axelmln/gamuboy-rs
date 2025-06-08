@@ -19,9 +19,65 @@ gamuboy = { git = "https://github.com/your-username/gamuboy" }
 use gamuboy::{
     config::Config,
     gameboy::GameBoy,
-    lcd::{self},
+    lcd::{LCD, FrameBuffer},
+    stereo::StereoPlayer,
+    joypad::Joypad,
+    joypad_events_handler::{self},
     saver::FileSaver,
 };
+
+struct Gui {}
+
+impl LCD for Gui {
+    fn draw_buffer(&mut self, matrix: &FrameBuffer) {
+        // your draw logic
+    }
+}
+
+struct Stereo {}
+
+impl StereoPlayer for Stereo {
+    fn play(&self, buffer: &[f32]) {
+        // your sound playing logic
+    }
+}
+
+struct EventsHandler {}
+
+impl joypad_events_handler::EventsHandler<Event> for EventsHandler {
+    fn handle_events(&mut self, rx: &Receiver<sdl2::event::Event>, joypad: &mut Joypad) {
+        let joypad_events: Vec<_> = rx.try_iter().collect();
+        // handle events with your key bindings
+        // exemple:
+        for evt in joypad_events {
+            match evt {
+                Event::KeyDown { code: Some(key), ... } => {
+                    match key {
+                        Keys::Up => joypad.update(joypad::Button::Up, true), // mutate gamuboy Joypad state
+                        // ...
+                    }
+                },
+                // ...
+            }
+        }
+    }
+}
+
+struct FileSaver {}
+
+impl GameSave for FileSaver {
+    fn set_title(&mut self, title: String) {
+        // handle what to do with the game identifier
+    }
+
+    fn load(&self) -> Result<Vec<u8>, Error> {
+        // handle save state loading
+    }
+
+    fn save(&self, ram: &[u8]) -> Result<(), Error> {
+        // handle state saving
+    }
+}
 
 fn main() {
     let cfg = Config {
@@ -37,7 +93,7 @@ fn main() {
         &cfg,
         Gui::new(), // inject your LCD implementation
         Stereo::new(), // inject your sound implementation
-        EventsHandler::new(controller), // Inject your joypad event handler implementation, where your key bindings happen
+        EventsHandler::new(), // Inject your joypad event handler implementation, where your key bindings happen
         FileSaver::new(), // Inject your game saver implementation
         &event_rx, // inject event receiver
     );
@@ -45,7 +101,7 @@ fn main() {
     let my_event_poller = EventPoller::new(); // init your event poller
 
     loop {
-        for event in event_pump.poll() {
+        for event in my_event_poller.poll() {
             event_tx.send(event).unwrap(); // handle event polling as you need before sending it via the event channel
         }
 
