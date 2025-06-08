@@ -1,6 +1,9 @@
 # gamuboy-rs
 A Game Boy emulation core written in Rust
 
+![zeldala](./images/zelda.png "Zelda Link's Awakening") ![supermarioland](./images/supermarioland.png "Super Mario Land")
+![donkeykong](./images/donkeykong.png "Donkey Kong") ![final =fantasy](./images/finalfantasy.png "Final Fantasy")
+
 ## Motivation
 
 Learning about emulation and rust
