@@ -4,6 +4,10 @@ A Game Boy emulation core written in Rust
 <img src="./images/zelda.png" alt="Zelda Link's Awakening" width="300"/> <img src="./images/supermarioland.png" alt="Super Mario land" width="300"/>
 <img src="./images/donkeykong.png" alt="Donkey Kong" width="300"/> <img src="./images/finalfantasy.png" alt="Final Fantasy" width="300"/>
 
+## Example emulators using this library
+
+- [gamuboy-rs-gui](https://github.com/axelmln/gamuboy-rs-gui)
+
 ## Motivation
 
 Learning about emulation and rust
@@ -26,7 +30,7 @@ use gamuboy::{
     stereo::StereoPlayer,
     joypad::Joypad,
     joypad_events_handler::{self},
-    saver::FileSaver,
+    saver::GameSave,
 };
 
 struct Gui {}
