@@ -247,51 +247,83 @@ impl<S: GameSave> MemReadWriter for MBC2<S> {
     }
 }
 
-#[allow(dead_code)]
-struct MBC3 {
+struct MBC5<S: GameSave> {
     rom: Vec<u8>,
-    ram: [u8; 0xC000],
-    rom_bank: u8,
-    ram_bank: u8,
+    ram: Vec<u8>,
+    rom_bank_lower: u8,
+    rom_bank_9th_bit: bool,
     ram_enabled: bool,
-    rtc_register: u8,
-    timer_enabled: bool,
+    ram_bank: u8,
+    saver: S,
 }
 
-impl MBC3 {
-    fn new(_rom: Vec<u8>) -> Self {
-        unimplemented!("TODO: MBC3")
-        // Self { rom }
+impl<S: GameSave> MBC5<S> {
+    fn new(rom: Vec<u8>, ram_size: usize, saver: S) -> Self {
+        Self {
+            rom,
+            ram: load_saved_ram(&saver, ram_size),
+            rom_bank_lower: 1,
+            rom_bank_9th_bit: false,
+            ram_enabled: false,
+            ram_bank: 0,
+            saver,
+        }
+    }
+
+    fn get_rom_address(&self, address: u16) -> usize {
+        let rom_bank = ((self.rom_bank_9th_bit as u32) << 8) | (self.rom_bank_lower) as u32;
+        let addr = (address - 0x4000) as u32 + rom_bank * 0x4000;
+        addr as usize
+    }
+
+    fn get_ram_address(&self, address: u16) -> usize {
+        let addr = (address - 0xA000) + self.ram_bank as u16 * 0x2000;
+        addr as usize
     }
 }
 
-impl MemReadWriter for MBC3 {
-    fn read_byte(&self, _address: u16) -> u8 {
-        unimplemented!()
-    }
-    fn write_byte(&mut self, _address: u16, _value: u8) {
-        unimplemented!()
-    }
-}
+impl<S: GameSave> MemReadWriter for MBC5<S> {
+    fn read_byte(&self, address: u16) -> u8 {
+        match address {
+            ..=0x3FFF => self.rom[address as usize],
+            0x4000..=0x7FFF => {
+                let addr = self.get_rom_address(address) & (self.rom.len() - 1);
+                self.rom[addr]
+            }
+            0xA000..=0xBFFF => {
+                let mut val = 0xFF;
+                if self.ram_enabled && self.ram.len() > 0 {
+                    let addr = self.get_ram_address(address) & (self.ram.len() - 1);
+                    val = self.ram[addr];
+                }
 
-#[allow(dead_code)]
-struct HuC1 {
-    rom: Vec<u8>,
-}
-
-impl HuC1 {
-    fn new(_rom: Vec<u8>) -> Self {
-        unimplemented!("TODO: HuC1");
-        // Self { rom }
+                val
+            }
+            _ => unreachable!("invalid read address for MBC5: {:#04x}", address),
+        }
     }
-}
-
-impl MemReadWriter for HuC1 {
-    fn read_byte(&self, _address: u16) -> u8 {
-        unimplemented!()
-    }
-    fn write_byte(&mut self, _address: u16, _value: u8) {
-        unimplemented!()
+    fn write_byte(&mut self, address: u16, value: u8) {
+        match address {
+            ..=0x1FFF => {
+                let enabled = right_nibble(value) == 0xA;
+                if self.ram_enabled && !enabled {
+                    self.saver.save(&self.ram).unwrap();
+                }
+                self.ram_enabled = enabled;
+            }
+            0x2000..=0x2FFF => self.rom_bank_lower = value,
+            0x3000..=0x3FFF => self.rom_bank_9th_bit = value & 1 != 0,
+            0x4000..=0x5FFF => self.ram_bank = value & 0xF,
+            0xA000..=0xBFFF => {
+                if self.ram_enabled && self.ram.len() > 0 {
+                    let addr = self.get_ram_address(address) & (self.ram.len() - 1);
+                    self.ram[addr] = value;
+                }
+            }
+            _ => {
+                unreachable!("invalid write address MBC5: {:#04x}", address)
+            }
+        }
     }
 }
 
@@ -305,8 +337,7 @@ fn get_target_mbc<S: GameSave + 'static>(
         0x00 => Box::new(NoMBC::new(rom)),
         0x01..=0x03 => Box::new(MBC1::new(rom, ram_size, saver)),
         0x05..=0x06 => Box::new(MBC2::new(rom, saver)),
-        0x0F..=0x13 => Box::new(MBC3::new(rom)),
-        0xFF => Box::new(HuC1::new(rom)),
+        0x19..=0x1E => Box::new(MBC5::new(rom, ram_size, saver)),
         _ => panic!("unimplemented or unreachable: {:#04x}", code),
     }
 }

@@ -425,4 +425,44 @@ mod tests {
     fn test_mooneye_roms_mbc2_rom_512kb() {
         test_rom("mooneye/mbc2", "rom_512kb.gb", Duration::from_secs(10));
     }
+
+    #[test]
+    fn test_mooneye_roms_mbc5_rom_512kb() {
+        test_rom("mooneye/mbc5", "rom_512kb.gb", Duration::from_secs(10));
+    }
+
+    #[test]
+    fn test_mooneye_roms_mbc5_rom_1mb() {
+        test_rom("mooneye/mbc5", "rom_1Mb.gb", Duration::from_secs(10));
+    }
+
+    #[test]
+    fn test_mooneye_roms_mbc5_rom_2mb() {
+        test_rom("mooneye/mbc5", "rom_2Mb.gb", Duration::from_secs(10));
+    }
+
+    #[test]
+    fn test_mooneye_roms_mbc5_rom_4mb() {
+        test_rom("mooneye/mbc5", "rom_4Mb.gb", Duration::from_secs(10));
+    }
+
+    #[test]
+    fn test_mooneye_roms_mbc5_rom_8mb() {
+        test_rom("mooneye/mbc5", "rom_8Mb.gb", Duration::from_secs(10));
+    }
+
+    #[test]
+    fn test_mooneye_roms_mbc5_rom_16mb() {
+        test_rom("mooneye/mbc5", "rom_16Mb.gb", Duration::from_secs(10));
+    }
+
+    #[test]
+    fn test_mooneye_roms_mbc5_rom_32mb() {
+        test_rom("mooneye/mbc5", "rom_32Mb.gb", Duration::from_secs(10));
+    }
+
+    #[test]
+    fn test_mooneye_roms_mbc5_rom_64mb() {
+        test_rom("mooneye/mbc5", "rom_64Mb.gb", Duration::from_secs(10));
+    }
 }
