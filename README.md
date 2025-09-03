@@ -127,7 +127,7 @@ fn main() {
 - Interrupts
 - Joypad
 - Timer
-- MBC 1 and 2
+- MBC 1, 2 and 5
 - Game saves
 
 
@@ -144,6 +144,7 @@ fn main() {
 Tested and working:
 - [x] MBC1 tests
 - [x] MBC2 tests
+- [x] MBC5 tests
 
 
 ### Todo
