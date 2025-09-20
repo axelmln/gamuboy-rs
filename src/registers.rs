@@ -1,3 +1,5 @@
+use crate::mode::Mode;
+
 #[derive(Debug)]
 pub struct Registers {
     pub a: u8,
@@ -24,10 +26,29 @@ impl Registers {
         }
     }
 
-    pub fn new_post_boot() -> Self {
+    pub fn new_post_boot(mode: Mode) -> Self {
+        match mode {
+            Mode::DMG => Self::new_post_boot_dmg(),
+            Mode::CGB => Self::new_post_boot_cgb(),
+        }
+    }
+
+    fn new_post_boot_dmg() -> Self {
         Self {
-            a: 0x01, // DMG
-            // a: 0x11, // CGB
+            a: 0x01,
+            b: 0x00,
+            c: 0x13,
+            d: 0x00,
+            e: 0xD8,
+            f: FlagsRegister::new_debug(),
+            h: 0x01,
+            l: 0x4D,
+        }
+    }
+
+    fn new_post_boot_cgb() -> Self {
+        Self {
+            a: 0x11,
             b: 0x00,
             c: 0x13,
             d: 0x00,

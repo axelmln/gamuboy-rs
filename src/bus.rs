@@ -13,6 +13,8 @@ pub trait Bus {
 
     fn check_interrupts(&mut self, reset_flag: bool) -> Option<u16>;
 
+    fn switch_speed(&mut self);
+
     fn step_peripherals(&mut self, cycles: u8);
 }
 
@@ -35,6 +37,9 @@ pub struct SystemBus<
     ram: RAM,
     joypad_events_handler: H,
     event_rx: &'a Receiver<E>,
+
+    double_speed_mode: bool,
+    switch_armed: bool,
 }
 
 impl<
@@ -70,6 +75,9 @@ impl<
             ram,
             joypad_events_handler,
             event_rx,
+
+            double_speed_mode: false,
+            switch_armed: false,
         }
     }
 
@@ -102,6 +110,12 @@ impl<
             0xFF04..=0xFF07 => self.timer.read_byte(address),
             0xFF01..=0xFF02 => self.serial.read_byte(address),
             0xC000..=0xFDFF | 0xFF80..=0xFFFE => self.ram.read_byte(address),
+
+            0xFF4D => {
+                let spd = (self.double_speed_mode as u8) << 7 | self.switch_armed as u8;
+                spd
+            }
+
             _ => self.dummy_mem[address as usize],
         }
     }
@@ -120,6 +134,9 @@ impl<
             0xFF04..=0xFF07 => self.timer.write_byte(address, value),
             0xFF01..=0xFF02 => self.serial.write_byte(address, value),
             0xC000..=0xFDFF | 0xFF80..=0xFFFE => self.ram.write_byte(address, value),
+
+            0xFF4D => self.switch_armed = value & 1 == 1,
+
             _ => self.dummy_mem[address as usize] = value,
         };
     }
@@ -128,18 +145,35 @@ impl<
         self.int_reg.check(reset_flag)
     }
 
+    fn switch_speed(&mut self) {
+        if self.switch_armed {
+            self.double_speed_mode = !self.double_speed_mode;
+            self.switch_armed = false;
+        }
+    }
+
     fn step_peripherals(&mut self, cycles: u8) {
+        let normal_speed_cycles = if self.double_speed_mode {
+            cycles / 2
+        } else {
+            cycles
+        };
+
         self.joypad_events_handler
             .handle_events(self.event_rx, &mut self.joypad);
 
-        self.ppu.step(&mut self.int_reg, cycles);
+        self.ppu.step(&mut self.int_reg, normal_speed_cycles);
+
         if let Some(value) = self.ppu.check_dma_request() {
             self.dma_transfer(value); // TODO: handle with cycle accuracy
         }
 
-        self.timer.step(&mut self.int_reg, cycles);
+        self.timer
+            .step(&mut self.int_reg, cycles, self.double_speed_mode);
 
-        self.apu.step(cycles, self.timer.read_byte(0xFF04));
+        let div_apu_event = self.timer.check_apu_div();
+
+        self.apu.step(normal_speed_cycles, div_apu_event);
 
         self.joypad.check(&mut self.int_reg);
     }

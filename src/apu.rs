@@ -17,14 +17,14 @@ const THREE_BITS: u8 = 0b111;
 const FOUR_BITS: u8 = 0b1111;
 const SIX_BITS: u8 = 0b111111;
 
-const BIT_0: u8 = 0b1;
-const BIT_1: u8 = 0b10;
-const BIT_2: u8 = 0b100;
-const BIT_3: u8 = 0b1000;
-const BIT_4: u8 = 0b10000;
-const BIT_5: u8 = 0b100000;
-const BIT_6: u8 = 0b1000000;
-const BIT_7: u8 = 0b10000000;
+const BIT_0: u8 = 1;
+const BIT_1: u8 = 1 << 1;
+const BIT_2: u8 = 1 << 2;
+const BIT_3: u8 = 1 << 3;
+const BIT_4: u8 = 1 << 4;
+const BIT_5: u8 = 1 << 5;
+const BIT_6: u8 = 1 << 6;
+const BIT_7: u8 = 1 << 7;
 
 #[derive(Clone, Debug)]
 enum SweepDirection {
@@ -889,7 +889,6 @@ pub struct APU<S: StereoPlayer + 'static> {
     left_volume: u8,
     right_volume: u8,
 
-    prev_div_apu: u8,
     current_step: u8,
     /// used to track when sample should be generated
     samples_cycle_acc: u32,
@@ -914,7 +913,6 @@ impl<S: StereoPlayer> APU<S> {
             left_volume: 0,
             right_volume: 0,
 
-            prev_div_apu: 0,
             current_step: 0,
             samples_cycle_acc: 0,
 
@@ -963,7 +961,6 @@ impl<S: StereoPlayer> APU<S> {
         self.left_volume = 0;
         self.right_volume = 0;
 
-        self.prev_div_apu = 0;
         self.current_step = 0;
         self.samples_cycle_acc = 0;
 
@@ -1029,10 +1026,6 @@ impl<S: StereoPlayer> APU<S> {
         }
     }
 
-    fn div_apu_ticked(&self, div_apu: u8) -> bool {
-        (self.prev_div_apu & BIT_4 == BIT_4) && (div_apu & BIT_4 == 0)
-    }
-
     fn step_frame_sequencer(&mut self) {
         self.current_step = (self.current_step + 1) % 8;
 
@@ -1091,15 +1084,14 @@ impl<S: StereoPlayer> APU<S> {
         vol + (vol == 0 || vol == 7) as u8
     }
 
-    pub fn step(&mut self, cycles: u8, div_apu: u8) {
+    pub fn step(&mut self, cycles: u8, div_apu_event: bool) {
         if !self.on {
             return;
         }
 
-        if self.div_apu_ticked(div_apu) {
+        if div_apu_event {
             self.step_frame_sequencer();
         }
-        self.prev_div_apu = div_apu;
 
         self.samples_cycle_acc = self.samples_cycle_acc.wrapping_add(cycles as u32);
 
@@ -1178,7 +1170,10 @@ impl<S: StereoPlayer> MemReadWriter for APU<S> {
 
             NR50 => self.read_volume(),
             NR51 => self.read_panning(),
-            NR52 => self.read_master_control(),
+            NR52 => {
+                let ctrl = self.read_master_control();
+                ctrl
+            }
 
             0xFF10..=0xFF3F => 0xFF,
             _ => unreachable!("APU reading address {:#04x}", address),

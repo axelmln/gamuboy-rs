@@ -1,8 +1,10 @@
-use crate::{bus::Bus, config::Config, registers};
+use crate::{bus::Bus, config::Config, instr::OP_STOP, mode::Mode, registers};
 
 const INSTRUCTION_PREFIX: u8 = 0xCB;
 
 pub struct CPU<B: Bus> {
+    mode: Mode,
+
     is_halted: bool,
     is_stopped: bool,
     ime: bool,
@@ -21,13 +23,15 @@ impl<B: Bus> CPU<B> {
         let skip_boot = cfg.bootrom.is_none();
 
         Self {
+            mode: cfg.mode.clone(),
+
             is_halted: false,
             is_stopped: false,
             ime: false,
             ime_delayed: false,
 
             registers: if skip_boot {
-                registers::Registers::new_post_boot()
+                registers::Registers::new_post_boot(cfg.mode.clone())
             } else {
                 registers::Registers::new()
             },
@@ -71,8 +75,12 @@ impl<B: Bus> CPU<B> {
     fn execute(&mut self, instruction_byte: u8) -> Option<(u16, u8)> {
         match instruction_byte {
             0x00 => Some((self.pc.wrapping_add(1), 4)),
-            0x10 => {
+            OP_STOP => {
                 self.is_stopped = true;
+                match self.mode {
+                    Mode::CGB => self.bus.switch_speed(),
+                    _ => {}
+                }
                 Some((self.pc.wrapping_add(1), 4))
             }
             0x03 => {
@@ -2653,12 +2661,15 @@ mod tests {
             None
         }
 
+        fn switch_speed(&mut self) {}
+
         fn step_peripherals(&mut self, _cycles: u8) {}
     }
 
     fn make_test_cpu() -> CPU<FakeBus> {
         CPU::new(
             &Config {
+                mode: Mode::DMG,
                 rom: vec![],
                 headless_mode: false,
                 bootrom: Some(vec![]),

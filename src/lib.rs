@@ -10,8 +10,10 @@ pub mod lcd;
 #[macro_use]
 pub mod logger;
 mod bus;
+mod instr;
 mod mbc;
 mod memory;
+pub mod mode;
 mod oam;
 pub mod ppu;
 mod ram;

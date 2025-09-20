@@ -1,5 +1,8 @@
 use crate::{interrupts::InterruptRegisters, memory::MemReadWriter};
 
+const BIT_4: u8 = 1 << 4;
+const BIT_5: u8 = 1 << 5;
+
 #[derive(Clone, Debug)]
 struct TimerControl {
     inc_freq: u8,
@@ -38,6 +41,7 @@ struct SystemCounter {
     counter: u16,
     prev: u16,
     ticked: bool,
+    div_apu_event: bool,
 }
 
 impl SystemCounter {
@@ -46,6 +50,7 @@ impl SystemCounter {
             counter: 0,
             prev: 0,
             ticked: false,
+            div_apu_event: false,
         }
     }
 
@@ -58,12 +63,22 @@ impl SystemCounter {
         prev_bit == 1 && curr_bit == 0
     }
 
-    fn inc(&mut self, cycles: u8, falling_edge_bit: u8) {
+    fn div_apu_ticked(&self, double_speed_mode: bool) -> bool {
+        let div = self.div();
+        let bit = if double_speed_mode { BIT_5 } else { BIT_4 };
+        let prev = (self.prev >> 8) as u8;
+
+        (prev & bit == bit) && (div & bit == 0)
+    }
+
+    fn inc(&mut self, cycles: u8, falling_edge_bit: u8, double_speed_mode: bool) {
         self.ticked = false;
 
         self.counter = self.counter.wrapping_add(cycles as u16);
 
         self.ticked = self.timer_ticked(falling_edge_bit);
+
+        self.div_apu_event = self.div_apu_ticked(double_speed_mode);
 
         self.prev = self.counter;
     }
@@ -101,8 +116,13 @@ impl Timer {
         }
     }
 
-    pub fn step(&mut self, int_reg: &mut InterruptRegisters, cycles: u8) {
-        self.system_counter.inc(cycles, self.tac.falling_edge_bit());
+    pub fn check_apu_div(&self) -> bool {
+        self.system_counter.div_apu_event
+    }
+
+    pub fn step(&mut self, int_reg: &mut InterruptRegisters, cycles: u8, double_speed_mode: bool) {
+        self.system_counter
+            .inc(cycles, self.tac.falling_edge_bit(), double_speed_mode);
 
         if !self.tac.enabled {
             return;
