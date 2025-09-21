@@ -45,7 +45,7 @@ impl<'a, L: LCD, E: Send + 'static, H: EventsHandler<E>, S: StereoPlayer> GameBo
                 SystemBus::new(
                     Cartridge::new(cfg, saver),
                     APU::new(stereo),
-                    PPU::new(cfg, VRAM::new(), OAM::new(), lcd),
+                    PPU::new(cfg, VRAM::new(cfg.mode.clone()), OAM::new(), lcd),
                     InterruptRegisters::new(),
                     Joypad::new(),
                     Timer::new(),

@@ -104,7 +104,9 @@ impl<
                 self.cartridge.read_byte(address)
             }
             0xFF10..=0xFF3F => self.apu.read_byte(address),
-            0x8000..=0x9FFF | 0xFE00..=0xFE9F | 0xFF40..=0xFF4B => self.ppu.read_byte(address),
+            0x8000..=0x9FFF | 0xFE00..=0xFE9F | 0xFF40..=0xFF4B | 0xFF4F => {
+                self.ppu.read_byte(address)
+            }
             0xFF0F | 0xFFFF => self.int_reg.read_byte(address),
             0xFF00 => self.joypad.read_byte(address),
             0xFF04..=0xFF07 => self.timer.read_byte(address),
@@ -126,7 +128,7 @@ impl<
                 self.cartridge.write_byte(address, value)
             }
             0xFF10..=0xFF3F => self.apu.write_byte(address, value),
-            0x8000..=0x9FFF | 0xFE00..=0xFE9F | 0xFF40..=0xFF4B => {
+            0x8000..=0x9FFF | 0xFE00..=0xFE9F | 0xFF40..=0xFF4B | 0xFF4F => {
                 self.ppu.write_byte(address, value)
             }
             0xFF0F | 0xFFFF => self.int_reg.write_byte(address, value),

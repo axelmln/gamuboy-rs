@@ -673,7 +673,7 @@ impl<L: lcd::LCD> PPU<L> {
 impl<L: lcd::LCD> MemReadWriter for PPU<L> {
     fn read_byte(&self, address: u16) -> u8 {
         match address {
-            0x8000..=0x9FFF => self.vram.read_byte(address),
+            0x8000..=0x9FFF | 0xFF4F => self.vram.read_byte(address),
             0xFE00..=0xFE9F => self.oam.read_byte(address),
             0xFF40 => self.lcdc.read(),
             0xFF41 => self.stat.read(self.mode.clone(), self.lyc == self.ly),
@@ -692,7 +692,7 @@ impl<L: lcd::LCD> MemReadWriter for PPU<L> {
     }
     fn write_byte(&mut self, address: u16, value: u8) {
         match address {
-            0x8000..=0x9FFF => self.vram.write_byte(address, value),
+            0x8000..=0x9FFF | 0xFF4F => self.vram.write_byte(address, value),
             0xFE00..=0xFE9F => self.oam.write_byte(address, value),
             0xFF40 => {
                 let was_enabled = self.lcdc.lcd_ppu_enable;
