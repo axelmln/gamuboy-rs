@@ -109,7 +109,7 @@ impl<
             0xFF00 => self.joypad.read_byte(address),
             0xFF04..=0xFF07 => self.timer.read_byte(address),
             0xFF01..=0xFF02 => self.serial.read_byte(address),
-            0xC000..=0xFDFF | 0xFF80..=0xFFFE => self.ram.read_byte(address),
+            0xC000..=0xFDFF | 0xFF70 | 0xFF80..=0xFFFE => self.ram.read_byte(address),
 
             0xFF4D => {
                 let spd = (self.double_speed_mode as u8) << 7 | self.switch_armed as u8;
@@ -133,7 +133,7 @@ impl<
             0xFF00 => self.joypad.write_byte(address, value),
             0xFF04..=0xFF07 => self.timer.write_byte(address, value),
             0xFF01..=0xFF02 => self.serial.write_byte(address, value),
-            0xC000..=0xFDFF | 0xFF80..=0xFFFE => self.ram.write_byte(address, value),
+            0xC000..=0xFDFF | 0xFF70 | 0xFF80..=0xFFFE => self.ram.write_byte(address, value),
 
             0xFF4D => self.switch_armed = value & 1 == 1,
 
