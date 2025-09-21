@@ -1,9 +1,18 @@
 use std::sync::mpsc::Receiver;
 
 use crate::{
-    apu::APU, cartridge::Cartridge, interrupts::InterruptRegisters, joypad::Joypad,
-    joypad_events_handler, lcd::LCD, memory::MemReadWriter, ppu::PPU, ram::RAM, serial::Serial,
-    stereo::StereoPlayer, timer::Timer,
+    apu::APU,
+    cartridge::Cartridge,
+    interrupts::InterruptRegisters,
+    joypad::Joypad,
+    joypad_events_handler,
+    lcd::LCD,
+    memory::MemReadWriter,
+    ppu::{DMARequest, PPU},
+    ram::RAM,
+    serial::Serial,
+    stereo::StereoPlayer,
+    timer::Timer,
 };
 
 /// Bus acts as an interface between the cpu and other system components
@@ -81,11 +90,20 @@ impl<
         }
     }
 
-    fn dma_transfer(&mut self, value: u8) {
+    fn oam_dma_transfer(&mut self, value: u8) {
         let src = value as u16 * 0x100;
         for (i, addr) in (0xFE00..=0xFE9F).enumerate() {
             let val = self.read_byte(src + i as u16);
             self.ppu.write_oam(addr, val);
+        }
+    }
+
+    fn vram_dma_transfer(&mut self, src: u16, dst: u16, len: u16) {
+        let src = src & 0xFFF0;
+        let dst = (dst & 0xFFF0) & 0x1FFF;
+        for (i, addr) in (dst..=dst + len).enumerate() {
+            let val = self.read_byte(src + i as u16);
+            self.ppu.write_vram(addr, val);
         }
     }
 }
@@ -104,7 +122,7 @@ impl<
                 self.cartridge.read_byte(address)
             }
             0xFF10..=0xFF3F => self.apu.read_byte(address),
-            0x8000..=0x9FFF | 0xFE00..=0xFE9F | 0xFF40..=0xFF4B | 0xFF4F => {
+            0x8000..=0x9FFF | 0xFE00..=0xFE9F | 0xFF40..=0xFF4B | 0xFF4F | 0xFF51..=0xFF55 => {
                 self.ppu.read_byte(address)
             }
             0xFF0F | 0xFFFF => self.int_reg.read_byte(address),
@@ -128,7 +146,7 @@ impl<
                 self.cartridge.write_byte(address, value)
             }
             0xFF10..=0xFF3F => self.apu.write_byte(address, value),
-            0x8000..=0x9FFF | 0xFE00..=0xFE9F | 0xFF40..=0xFF4B | 0xFF4F => {
+            0x8000..=0x9FFF | 0xFE00..=0xFE9F | 0xFF40..=0xFF4B | 0xFF4F | 0xFF51..=0xFF55 => {
                 self.ppu.write_byte(address, value)
             }
             0xFF0F | 0xFFFF => self.int_reg.write_byte(address, value),
@@ -166,8 +184,12 @@ impl<
 
         self.ppu.step(&mut self.int_reg, normal_speed_cycles);
 
-        if let Some(value) = self.ppu.check_dma_request() {
-            self.dma_transfer(value); // TODO: handle with cycle accuracy
+        if let Some(req) = self.ppu.check_dma_request() {
+            // TODO: handle with cycle accuracy
+            match req {
+                DMARequest::OAM(value) => self.oam_dma_transfer(value),
+                DMARequest::VRAM { src, dst, len, .. } => self.vram_dma_transfer(src, dst, len),
+            }
         }
 
         self.timer

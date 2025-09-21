@@ -8,7 +8,7 @@ use crate::{
         RGB_WHITE,
     },
     memory::MemReadWriter,
-    oam, vram,
+    mode, oam, vram,
 };
 
 const OAM_DOTS: u32 = 80;
@@ -16,6 +16,8 @@ const VRAM_DOTS: u32 = 172;
 const SCANLINE_DOTS: u32 = 456;
 
 const DOTS_PER_FRAME: u32 = 70224;
+
+const BIT_7: u8 = 1 << 7;
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 enum GrayShade {
@@ -267,7 +269,20 @@ impl ObjectAttributes {
 }
 
 #[derive(Clone)]
+pub enum DMARequest {
+    OAM(u8),
+    VRAM {
+        src: u16,
+        dst: u16,
+        len: u16,
+        is_hdma: bool,
+    },
+}
+
+#[derive(Clone)]
 pub struct PPU<L: LCD + 'static> {
+    gb_mode: mode::Mode,
+
     headless_mode: bool,
 
     dots: u32,
@@ -300,11 +315,20 @@ pub struct PPU<L: LCD + 'static> {
     obj_palettes: [Palette; 2],
     line_objects: Vec<ObjectAttributes>,
 
-    dma_request: Option<u8>,
+    dma_request: Option<DMARequest>,
+    pending_dma_request: Option<DMARequest>,
 
     frame_cycles_acc: u32,
 
     last_frame_instant: Instant,
+
+    high_vram_dma_src: u8,
+    low_vram_dma_src: u8,
+
+    high_vram_dma_dst: u8,
+    low_vram_dma_dst: u8,
+
+    vram_dma_transfer_len: u8,
 }
 
 impl<L: lcd::LCD> PPU<L> {
@@ -312,6 +336,8 @@ impl<L: lcd::LCD> PPU<L> {
         let skip_boot = cfg.bootrom.is_none();
 
         Self {
+            gb_mode: cfg.mode.clone(),
+
             headless_mode: cfg.headless_mode,
 
             dots: 0,
@@ -356,10 +382,19 @@ impl<L: lcd::LCD> PPU<L> {
             line_objects: vec![],
 
             dma_request: None,
+            pending_dma_request: None,
 
             frame_cycles_acc: 0,
 
             last_frame_instant: Instant::now(),
+
+            high_vram_dma_src: 0,
+            low_vram_dma_src: 0,
+
+            high_vram_dma_dst: 0,
+            low_vram_dma_dst: 0,
+
+            vram_dma_transfer_len: 0,
         }
     }
 
@@ -596,8 +631,17 @@ impl<L: lcd::LCD> PPU<L> {
         if self.dots < SCANLINE_DOTS {
             return;
         }
+
         self.dots -= SCANLINE_DOTS;
         self.inc_ly();
+
+        match self.pending_dma_request {
+            Some(DMARequest::VRAM { is_hdma: true, .. }) => {
+                self.dma_request = self.pending_dma_request.clone()
+            }
+            _ => {}
+        }
+
         if self.ly >= PIXELS_HEIGHT as u8 {
             self.enter_vblank(int_reg);
         } else {
@@ -638,9 +682,36 @@ impl<L: lcd::LCD> PPU<L> {
         self.oam.write_byte(address, value);
     }
 
-    pub fn check_dma_request(&mut self) -> Option<u8> {
-        let req = self.dma_request;
+    pub fn write_vram(&mut self, address: u16, value: u8) {
+        self.vram.write_byte(address, value);
+    }
+
+    pub fn check_dma_request(&mut self) -> Option<DMARequest> {
+        let req = self.dma_request.clone();
+        match req {
+            Some(DMARequest::VRAM {
+                src,
+                dst,
+                is_hdma: true,
+                ..
+            }) => {
+                if self.vram_dma_transfer_len == 0 {
+                    self.pending_dma_request = None;
+                } else {
+                    self.vram_dma_transfer_len -= 1;
+                    self.pending_dma_request = Some(DMARequest::VRAM {
+                        src: src + 0x10,
+                        dst: dst + 0x10,
+                        len: 0x10,
+                        is_hdma: true,
+                    });
+                }
+            }
+            _ => {}
+        }
+
         self.dma_request = None;
+
         req
     }
 
@@ -672,6 +743,20 @@ impl<L: lcd::LCD> PPU<L> {
 
 impl<L: lcd::LCD> MemReadWriter for PPU<L> {
     fn read_byte(&self, address: u16) -> u8 {
+        match self.gb_mode {
+            mode::Mode::CGB => match address {
+                0xFF51..=0xFF54 => return 0xFF,
+                0xFF55 => {
+                    if self.dma_request.is_some() {
+                        return self.vram_dma_transfer_len;
+                    }
+                    return 0xFF;
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+
         match address {
             0x8000..=0x9FFF | 0xFF4F => self.vram.read_byte(address),
             0xFE00..=0xFE9F => self.oam.read_byte(address),
@@ -691,6 +776,34 @@ impl<L: lcd::LCD> MemReadWriter for PPU<L> {
         }
     }
     fn write_byte(&mut self, address: u16, value: u8) {
+        match self.gb_mode {
+            mode::Mode::CGB => match address {
+                0xFF51 => return self.high_vram_dma_src = value,
+                0xFF52 => return self.low_vram_dma_src = value,
+                0xFF53 => return self.high_vram_dma_dst = value,
+                0xFF54 => return self.low_vram_dma_dst = value,
+                0xFF55 => {
+                    let src = (self.high_vram_dma_src as u16) << 8 | self.low_vram_dma_src as u16;
+                    let dst = (self.high_vram_dma_dst as u16) << 8 | self.low_vram_dma_dst as u16;
+                    self.vram_dma_transfer_len = value & 0x7F;
+                    let len = (self.vram_dma_transfer_len as u16 + 1) * 0x10;
+                    let is_hdma = value & BIT_7 == 1;
+                    let req = DMARequest::VRAM {
+                        src,
+                        dst,
+                        len,
+                        is_hdma,
+                    };
+                    if is_hdma {
+                        return self.pending_dma_request = Some(req);
+                    }
+                    return self.dma_request = Some(req);
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+
         match address {
             0x8000..=0x9FFF | 0xFF4F => self.vram.write_byte(address, value),
             0xFE00..=0xFE9F => self.oam.write_byte(address, value),
@@ -708,7 +821,7 @@ impl<L: lcd::LCD> MemReadWriter for PPU<L> {
             0xFF43 => self.scx = value,
             0xFF44 => self.ly = 0,
             0xFF45 => self.lyc = value,
-            0xFF46 => self.dma_request = Some(value),
+            0xFF46 => self.dma_request = Some(DMARequest::OAM(value)),
             0xFF47 => self.bg_palette.update(value),
             0xFF48 => self.obj_palettes[0].update(value),
             0xFF49 => self.obj_palettes[1].update(value),
