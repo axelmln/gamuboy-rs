@@ -187,7 +187,7 @@ mod tests {
         test_rom_cgb(
             "blargg/interrupt_time",
             "interrupt_time.gb",
-            Duration::from_secs(30),
+            Duration::from_secs(10),
         );
     }
 

@@ -50,7 +50,7 @@ impl<'a, L: LCD, E: Send + 'static, H: EventsHandler<E>, S: StereoPlayer> GameBo
                     Joypad::new(),
                     Timer::new(),
                     Serial::new(),
-                    RAM::new(),
+                    RAM::new(cfg.mode.clone()),
                     joypad_events_handler,
                     event_rx,
                 ),
