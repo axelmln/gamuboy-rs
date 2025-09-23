@@ -1,5 +1,7 @@
 use crate::{memory::MemReadWriter, mode::Mode};
 
+pub const BANK_REGISTER: u16 = 0xFF4F;
+
 pub const BASE_ADDRESS: u16 = 0x8000;
 const END_ADDRESS: u16 = 0x9FFF;
 
@@ -33,7 +35,7 @@ impl MemReadWriter for VRAM {
     fn read_byte(&self, address: u16) -> u8 {
         match self.mode {
             Mode::CGB => match address {
-                0xFF4F => return 0b11111110 | self.bank,
+                BANK_REGISTER => return 0b11111110 | self.bank,
                 _ => {}
             },
             _ => {}
@@ -50,7 +52,7 @@ impl MemReadWriter for VRAM {
     fn write_byte(&mut self, address: u16, value: u8) {
         match self.mode {
             Mode::CGB => match address {
-                0xFF4F => return self.bank = value & 1,
+                BANK_REGISTER => return self.bank = value & 1,
                 _ => {}
             },
             _ => {}
@@ -74,14 +76,14 @@ mod tests {
         let mut vram = VRAM::new(Mode::CGB);
 
         for i in 0..=1 {
-            vram.write_byte(0xFF4F, i);
+            vram.write_byte(BANK_REGISTER, i);
             for addr in BASE_ADDRESS..=END_ADDRESS {
                 vram.write_byte(addr, i);
             }
         }
 
         for i in 0..=1 {
-            vram.write_byte(0xFF4F, i);
+            vram.write_byte(BANK_REGISTER, i);
             let expected = i;
             for addr in BASE_ADDRESS..=END_ADDRESS {
                 assert_eq!(expected, vram.read_byte(addr));

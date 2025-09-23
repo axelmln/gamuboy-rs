@@ -8,7 +8,7 @@ use crate::{
     joypad_events_handler,
     lcd::LCD,
     memory::MemReadWriter,
-    ppu::{DMARequest, PPU},
+    ppu::{self, DMARequest, PPU},
     ram::RAM,
     serial::Serial,
     stereo::StereoPlayer,
@@ -100,8 +100,8 @@ impl<
 
     fn vram_dma_transfer(&mut self, src: u16, dst: u16, len: u16) {
         let src = src & 0xFFF0;
-        let dst = (dst & 0xFFF0) & 0x1FFF;
-        for (i, addr) in (dst..=dst + len).enumerate() {
+        let dst = 0x8000 | (dst & 0x1FF0);
+        for (i, addr) in (dst..dst + len).enumerate() {
             let val = self.read_byte(src + i as u16);
             self.ppu.write_vram(addr, val);
         }
@@ -122,7 +122,12 @@ impl<
                 self.cartridge.read_byte(address)
             }
             0xFF10..=0xFF3F => self.apu.read_byte(address),
-            0x8000..=0x9FFF | 0xFE00..=0xFE9F | 0xFF40..=0xFF4B | 0xFF4F | 0xFF51..=0xFF55 => {
+            0x8000..=0x9FFF
+            | 0xFE00..=0xFE9F
+            | 0xFF40..=0xFF4B
+            | 0xFF4F
+            | 0xFF51..=0xFF55
+            | ppu::BG_COLOR_PALETTE_SPEC_REG..=ppu::OBJ_COLOR_PALETTE_DATA_REG => {
                 self.ppu.read_byte(address)
             }
             0xFF0F | 0xFFFF => self.int_reg.read_byte(address),
@@ -146,7 +151,12 @@ impl<
                 self.cartridge.write_byte(address, value)
             }
             0xFF10..=0xFF3F => self.apu.write_byte(address, value),
-            0x8000..=0x9FFF | 0xFE00..=0xFE9F | 0xFF40..=0xFF4B | 0xFF4F | 0xFF51..=0xFF55 => {
+            0x8000..=0x9FFF
+            | 0xFE00..=0xFE9F
+            | 0xFF40..=0xFF4B
+            | 0xFF4F
+            | 0xFF51..=0xFF55
+            | ppu::BG_COLOR_PALETTE_SPEC_REG..=ppu::OBJ_COLOR_PALETTE_DATA_REG => {
                 self.ppu.write_byte(address, value)
             }
             0xFF0F | 0xFFFF => self.int_reg.write_byte(address, value),

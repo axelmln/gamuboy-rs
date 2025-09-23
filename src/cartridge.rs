@@ -5,7 +5,7 @@ use std::{
 
 use crc::{Crc, CRC_32_ISO_HDLC};
 
-use crate::{config::Config, mbc, memory::MemReadWriter, saver::GameSave};
+use crate::{config::Config, mbc, memory::MemReadWriter, mode::Mode, saver::GameSave};
 
 const ROM_CHECKSUM_ADDRESS: usize = 0x014D;
 const CARTRIDGE_TYPE_ADDRESS: usize = 0x0147;
@@ -43,6 +43,7 @@ struct Header {
 }
 
 pub struct Cartridge {
+    mode: Mode,
     bootrom_enabled: bool,
     bootrom: Option<Vec<u8>>,
     #[allow(dead_code)]
@@ -90,6 +91,7 @@ impl Cartridge {
         };
 
         Self {
+            mode: cfg.mode.clone(),
             bootrom_enabled: cfg.bootrom.is_some(),
             bootrom: cfg.bootrom.clone(),
             mbc: mbc::MBC::new(rom[CARTRIDGE_TYPE_ADDRESS], rom.clone(), ram_size, saver),
@@ -100,20 +102,54 @@ impl Cartridge {
 
 impl MemReadWriter for Cartridge {
     fn read_byte(&self, address: u16) -> u8 {
-        if self.bootrom_enabled && self.bootrom.is_some() && address <= 0x00FF {
-            self.bootrom.as_ref().unwrap()[address as usize]
-        } else {
-            self.mbc.read_byte(address)
+        match self.mode {
+            Mode::DMG => {
+                if self.bootrom_enabled && self.bootrom.is_some() && address <= 0x00FF {
+                    return self.bootrom.as_ref().unwrap()[address as usize];
+                }
+            }
+            Mode::CGB => {
+                if self.bootrom_enabled && self.bootrom.is_some() {
+                    match address {
+                        ..=0x00FF => {
+                            return self.bootrom.as_ref().unwrap()[address as usize];
+                        }
+                        0x0200..=0x08FF => {
+                            return self.bootrom.as_ref().unwrap()[address as usize];
+                        }
+                        _ => {}
+                    }
+                }
+            }
         }
+
+        self.mbc.read_byte(address)
     }
 
     fn write_byte(&mut self, address: u16, value: u8) {
-        if self.bootrom_enabled && address <= 0x00FF {
-            panic!(
-                "writing to bootrom: address: {:#04x}, value: {:#04x}",
-                address, value
-            );
-        } else if address == 0xFF50 {
+        match self.mode {
+            Mode::DMG => {
+                if self.bootrom_enabled && self.bootrom.is_some() && address <= 0x00FF {
+                    panic!(
+                        "writing to bootrom: address: {:#04x}, value: {:#04x}",
+                        address, value
+                    );
+                }
+            }
+            Mode::CGB => {
+                if self.bootrom_enabled
+                    && self.bootrom.is_some()
+                    && (address <= 0x00FF || (address >= 0x0200 && address <= 0x08FF))
+                {
+                    panic!(
+                        "writing to bootrom: address: {:#04x}, value: {:#04x}",
+                        address, value
+                    );
+                }
+            }
+        }
+
+        if address == 0xFF50 {
             self.bootrom_enabled = false;
         } else {
             self.mbc.write_byte(address, value);

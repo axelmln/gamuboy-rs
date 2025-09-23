@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    array,
+    time::{Duration, Instant},
+};
 
 use crate::{
     config::Config,
@@ -18,6 +21,12 @@ const SCANLINE_DOTS: u32 = 456;
 const DOTS_PER_FRAME: u32 = 70224;
 
 const BIT_7: u8 = 1 << 7;
+
+pub const BG_COLOR_PALETTE_SPEC_REG: u16 = 0xFF68;
+pub const BG_COLOR_PALETTE_DATA_REG: u16 = 0xFF69;
+
+pub const OBJ_COLOR_PALETTE_SPEC_REG: u16 = 0xFF6A;
+pub const OBJ_COLOR_PALETTE_DATA_REG: u16 = 0xFF6B;
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 enum GrayShade {
@@ -57,17 +66,25 @@ fn get_color_id_from_two_bytes(left: u8, right: u8, i: u8) -> u8 {
     select_bit(right, 7 - i) << 1 | select_bit(left, 7 - i)
 }
 
-fn pixel_from_color_id(color_id: u8, palette: &Palette) -> GrayShade {
-    palette.get_shade(color_id)
+trait Palette {
+    fn get_color_from_id(&self, id: u8) -> lcd::RGB;
 }
 
 #[derive(Clone)]
-struct Palette([GrayShade; 4]);
+struct MonochromePalette {
+    palette: [GrayShade; 4],
+}
 
-impl Palette {
-    fn default() -> Self {
+impl Palette for MonochromePalette {
+    fn get_color_from_id(&self, id: u8) -> lcd::RGB {
+        self.palette[id as usize].to_rgb()
+    }
+}
+
+impl MonochromePalette {
+    fn new() -> Self {
         Self {
-            0: [
+            palette: [
                 GrayShade::White,
                 GrayShade::LightGray,
                 GrayShade::DarkGray,
@@ -76,19 +93,123 @@ impl Palette {
         }
     }
 
-    fn get_shade(&self, id: u8) -> GrayShade {
-        self.0[id as usize]
-    }
-
     fn read(&self) -> u8 {
-        (self.0[3] as u8) << 6 | (self.0[2] as u8) << 4 | (self.0[1] as u8) << 2 | self.0[0] as u8
+        (self.palette[3] as u8) << 6
+            | (self.palette[2] as u8) << 4
+            | (self.palette[1] as u8) << 2
+            | self.palette[0] as u8
     }
 
     fn update(&mut self, value: u8) {
-        self.0[0] = GrayShade::from(value);
-        self.0[1] = GrayShade::from(value >> 2);
-        self.0[2] = GrayShade::from(value >> 4);
-        self.0[3] = GrayShade::from(value >> 6);
+        self.palette[0] = GrayShade::from(value);
+        self.palette[1] = GrayShade::from(value >> 2);
+        self.palette[2] = GrayShade::from(value >> 4);
+        self.palette[3] = GrayShade::from(value >> 6);
+    }
+}
+
+fn scale_up_color_channel(ch: u8) -> u8 {
+    (ch as u16 * 255 / 31) as u8
+}
+
+#[derive(Clone)]
+struct ColorPalette {
+    color_data: [u8; 8],
+}
+
+impl Palette for ColorPalette {
+    fn get_color_from_id(&self, id: u8) -> lcd::RGB {
+        let raw_rgb_bytes = (self.color_data[id as usize * 2 + 1] as u16) << 8
+            | self.color_data[id as usize * 2] as u16;
+        let mask = 0b11111;
+        let red = scale_up_color_channel(raw_rgb_bytes as u8 & mask);
+        let green = scale_up_color_channel((raw_rgb_bytes >> 5) as u8 & mask);
+        let blue = scale_up_color_channel((raw_rgb_bytes >> 10) as u8 & mask);
+
+        (red, green, blue)
+    }
+}
+
+impl ColorPalette {
+    fn new() -> Self {
+        Self {
+            color_data: [
+                0xFF, 0xFF, // white
+                0xB5, 0x56, // light gray
+                0x4A, 0x29, // dark gray
+                0x00, 0x00, // black
+            ],
+        }
+    }
+
+    fn write(&mut self, address: u8, value: u8) {
+        self.color_data[address as usize % 8] = value;
+    }
+
+    fn read(&self, address: u8) -> u8 {
+        self.color_data[address as usize % 8]
+    }
+}
+
+#[derive(Clone)]
+struct ColorPaletteRAM {
+    spec: ColorPaletteSpec,
+    data: [ColorPalette; 8],
+}
+
+impl ColorPaletteRAM {
+    fn new() -> Self {
+        Self {
+            spec: ColorPaletteSpec::new(),
+            data: array::from_fn(|_| ColorPalette::new()),
+        }
+    }
+
+    fn write_spec(&mut self, value: u8) {
+        self.spec.write(value);
+    }
+
+    fn read_spec(&self) -> u8 {
+        self.spec.read()
+    }
+
+    fn write_data(&mut self, value: u8) {
+        self.data[self.spec.address as usize / 8].write(self.spec.address % 8, value);
+        self.spec.address += self.spec.auto_inc as u8;
+        self.spec.address %= 64;
+    }
+
+    fn read_data(&self) -> u8 {
+        self.get_palette(self.spec.address / 8)
+            .read(self.spec.address % 8)
+    }
+
+    fn get_palette(&self, i: u8) -> ColorPalette {
+        self.data[i as usize].clone()
+    }
+}
+
+#[derive(Clone)]
+struct ColorPaletteSpec {
+    auto_inc: bool,
+    address: u8,
+}
+
+impl ColorPaletteSpec {
+    fn new() -> Self {
+        Self {
+            auto_inc: false,
+            address: 0,
+        }
+    }
+
+    fn read(&self) -> u8 {
+        (self.auto_inc as u8) << 7 | self.address
+    }
+
+    fn write(&mut self, value: u8) {
+        self.auto_inc = value & BIT_7 == BIT_7;
+        self.address = value & 0x3F;
     }
 }
 
@@ -228,7 +349,9 @@ impl Stat {
 
 #[derive(Clone)]
 struct ObjectFlags {
-    palette: u8,
+    cgb_palette: u8,
+    vram_bank: u8,
+    dmg_palette: u8,
     x_flip: bool,
     y_flip: bool,
     bg_win_priority: bool,
@@ -237,7 +360,9 @@ struct ObjectFlags {
 impl From<u8> for ObjectFlags {
     fn from(value: u8) -> Self {
         Self {
-            palette: value >> 4 & 1,
+            cgb_palette: value & 3,
+            vram_bank: value >> 3 & 1,
+            dmg_palette: value >> 4 & 1,
             x_flip: value >> 5 & 1 != 0,
             y_flip: value >> 6 & 1 != 0,
             bg_win_priority: value >> 7 & 1 != 0,
@@ -264,6 +389,26 @@ impl ObjectAttributes {
             x_pos,
             tile_index,
             flags: ObjectFlags::from(flags_byte),
+        }
+    }
+}
+
+struct BGMapAttributes {
+    priority: bool,
+    y_flip: bool,
+    x_flip: bool,
+    bank: u8,
+    color_palette: u8,
+}
+
+impl BGMapAttributes {
+    fn new(value: u8) -> Self {
+        Self {
+            priority: value >> 7 & 1 == 1,
+            y_flip: value >> 6 & 1 == 1,
+            x_flip: value >> 5 & 1 == 1,
+            bank: value >> 3 & 1,
+            color_palette: value & 0b111,
         }
     }
 }
@@ -311,8 +456,12 @@ pub struct PPU<L: LCD + 'static> {
     wy: u8,
     wx: u8,
 
-    bg_palette: Palette,
-    obj_palettes: [Palette; 2],
+    monochrome_bg_palette: MonochromePalette,
+    monochrome_obj_palettes: [MonochromePalette; 2],
+
+    bg_palette_ram: ColorPaletteRAM,
+    obj_palette_ram: ColorPaletteRAM,
+
     line_objects: Vec<ObjectAttributes>,
 
     dma_request: Option<DMARequest>,
@@ -377,8 +526,12 @@ impl<L: lcd::LCD> PPU<L> {
             wy: 0,
             wx: 0,
 
-            bg_palette: Palette::default(),
-            obj_palettes: [Palette::default(), Palette::default()],
+            monochrome_bg_palette: MonochromePalette::new(),
+            monochrome_obj_palettes: array::from_fn(|_| MonochromePalette::new()),
+
+            bg_palette_ram: ColorPaletteRAM::new(),
+            obj_palette_ram: ColorPaletteRAM::new(),
+
             line_objects: vec![],
 
             dma_request: None,
@@ -408,6 +561,27 @@ impl<L: lcd::LCD> PPU<L> {
         self.lcdc.win_enable && self.ly >= self.wy
     }
 
+    fn get_bg_palette(&self, tile_attr: Option<BGMapAttributes>) -> Box<dyn Palette> {
+        match self.gb_mode {
+            mode::Mode::DMG => Box::new(self.monochrome_bg_palette.clone()),
+            mode::Mode::CGB => Box::new(
+                self.bg_palette_ram
+                    .get_palette(tile_attr.unwrap().color_palette),
+            ),
+        }
+    }
+
+    fn get_obj_palette(&self, obj_attr: &ObjectAttributes) -> Box<dyn Palette> {
+        match self.gb_mode {
+            mode::Mode::DMG => {
+                Box::new(self.monochrome_obj_palettes[obj_attr.flags.dmg_palette as usize].clone())
+            }
+            mode::Mode::CGB => {
+                Box::new(self.obj_palette_ram.get_palette(obj_attr.flags.cgb_palette))
+            }
+        }
+    }
+
     fn buffer_pix_bg(&mut self, x: u8, bg_win_color_id: &mut u8) {
         if !self.lcdc.bg_win_enable {
             return;
@@ -420,9 +594,14 @@ impl<L: lcd::LCD> PPU<L> {
         let tile_x = scroll_x / 8;
 
         let base_map_addr = self.lcdc.bg_tile_map_area.clone() as u16;
+
+        self.switch_vram_bank(0);
         let tile_index = self
             .vram
             .read_byte(base_map_addr + tile_y as u16 + tile_x as u16);
+
+        let tile_attributes =
+            self.get_bg_tile_attributes(base_map_addr + tile_y as u16 + tile_x as u16);
 
         let tile_addr = self.lcdc.bg_win_tile_data_area.get_tile_address(tile_index);
 
@@ -434,8 +613,10 @@ impl<L: lcd::LCD> PPU<L> {
         );
         *bg_win_color_id = color_id;
 
-        let pixel = pixel_from_color_id(color_id, &self.bg_palette);
-        self.frame_buffer[self.ly as usize][x as usize] = pixel.to_rgb();
+        let pixel = self
+            .get_bg_palette(tile_attributes)
+            .get_color_from_id(color_id);
+        self.frame_buffer[self.ly as usize][x as usize] = pixel;
     }
 
     fn buffer_pix_win(&mut self, x: u8, bg_win_color_id: &mut u8) {
@@ -456,7 +637,12 @@ impl<L: lcd::LCD> PPU<L> {
         let tile_x = win_x as u16 / 8;
 
         let base_map_addr = self.lcdc.win_tile_map_area.clone() as u16;
+
+        self.switch_vram_bank(0);
         let tile_index = self.vram.read_byte(base_map_addr + tile_y + tile_x);
+
+        let tile_attributes =
+            self.get_bg_tile_attributes(base_map_addr + tile_y as u16 + tile_x as u16);
 
         let tile_addr = self.lcdc.bg_win_tile_data_area.get_tile_address(tile_index);
 
@@ -467,8 +653,10 @@ impl<L: lcd::LCD> PPU<L> {
         );
         *bg_win_color_id = color_id;
 
-        let pixel = pixel_from_color_id(color_id, &self.bg_palette);
-        self.frame_buffer[self.ly as usize][x as usize] = pixel.to_rgb();
+        let pixel = self
+            .get_bg_palette(tile_attributes)
+            .get_color_from_id(color_id);
+        self.frame_buffer[self.ly as usize][x as usize] = pixel;
     }
 
     fn buffer_pix_obj(&mut self, x: u8, bg_win_color_id: u8) {
@@ -506,6 +694,15 @@ impl<L: lcd::LCD> PPU<L> {
             let y_offset = (obj_y as u16 % 8) * 2;
             let tile_addr = vram::BASE_ADDRESS + tile_index as u16 * 16 + y_offset;
 
+            match self.gb_mode {
+                // In CGB Mode this could be either in VRAM bank 0 or 1, depending on bit 3 of the following byte. (https://gbdev.io/pandocs/OAM.html#byte-2--tile-index)
+                mode::Mode::CGB => {
+                    self.vram
+                        .write_byte(vram::BANK_REGISTER, obj_attr.flags.vram_bank);
+                }
+                _ => {}
+            }
+
             let tile_high_byte = self.vram.read_byte(tile_addr);
             let tile_low_byte = self.vram.read_byte(tile_addr + 1);
 
@@ -521,12 +718,9 @@ impl<L: lcd::LCD> PPU<L> {
                 continue;
             }
 
-            let pixel = pixel_from_color_id(
-                color_id,
-                &self.obj_palettes[obj_attr.flags.palette as usize],
-            );
+            let pixel = self.get_obj_palette(obj_attr).get_color_from_id(color_id);
 
-            self.frame_buffer[self.ly as usize][x as usize] = pixel.to_rgb();
+            self.frame_buffer[self.ly as usize][x as usize] = pixel;
         }
     }
 
@@ -567,6 +761,27 @@ impl<L: lcd::LCD> PPU<L> {
 
         self.line_objects.sort_by_key(|o| o.x_pos);
         self.line_objects.truncate(10);
+    }
+
+    fn get_bg_tile_attributes(&mut self, address: u16) -> Option<BGMapAttributes> {
+        match self.gb_mode {
+            mode::Mode::CGB => {
+                self.switch_vram_bank(1);
+                let tile_attributes_byte = self.vram.read_byte(address);
+                let tile_attributes = BGMapAttributes::new(tile_attributes_byte);
+                self.switch_vram_bank(tile_attributes.bank);
+
+                Some(tile_attributes)
+            }
+            mode::Mode::DMG => None,
+        }
+    }
+
+    fn switch_vram_bank(&mut self, bank: u8) {
+        match self.gb_mode {
+            mode::Mode::CGB => self.vram.write_byte(vram::BANK_REGISTER, bank),
+            _ => {}
+        }
     }
 
     fn inc_ly(&mut self) {
@@ -752,6 +967,13 @@ impl<L: lcd::LCD> MemReadWriter for PPU<L> {
                     }
                     return 0xFF;
                 }
+
+                BG_COLOR_PALETTE_SPEC_REG => return self.bg_palette_ram.read_spec(),
+                BG_COLOR_PALETTE_DATA_REG => return self.bg_palette_ram.read_data(),
+
+                OBJ_COLOR_PALETTE_SPEC_REG => return self.obj_palette_ram.read_spec(),
+                OBJ_COLOR_PALETTE_DATA_REG => return self.obj_palette_ram.read_data(),
+
                 _ => {}
             },
             _ => {}
@@ -767,9 +989,9 @@ impl<L: lcd::LCD> MemReadWriter for PPU<L> {
             0xFF44 => self.ly,
             0xFF45 => self.lyc,
             0xFF46 => 0xFF,
-            0xFF47 => self.bg_palette.read(),
-            0xFF48 => self.obj_palettes[0].read(),
-            0xFF49 => self.obj_palettes[1].read(),
+            0xFF47 => self.monochrome_bg_palette.read(),
+            0xFF48 => self.monochrome_obj_palettes[0].read(),
+            0xFF49 => self.monochrome_obj_palettes[1].read(),
             0xFF4A => self.wy,
             0xFF4B => self.wx,
             _ => unimplemented!("PPU: reading address: {:#04x}", address),
@@ -799,6 +1021,13 @@ impl<L: lcd::LCD> MemReadWriter for PPU<L> {
                     }
                     return self.dma_request = Some(req);
                 }
+
+                BG_COLOR_PALETTE_SPEC_REG => return self.bg_palette_ram.write_spec(value),
+                BG_COLOR_PALETTE_DATA_REG => return self.bg_palette_ram.write_data(value),
+
+                OBJ_COLOR_PALETTE_SPEC_REG => return self.obj_palette_ram.write_spec(value),
+                OBJ_COLOR_PALETTE_DATA_REG => return self.obj_palette_ram.write_data(value),
+
                 _ => {}
             },
             _ => {}
@@ -822,9 +1051,9 @@ impl<L: lcd::LCD> MemReadWriter for PPU<L> {
             0xFF44 => self.ly = 0,
             0xFF45 => self.lyc = value,
             0xFF46 => self.dma_request = Some(DMARequest::OAM(value)),
-            0xFF47 => self.bg_palette.update(value),
-            0xFF48 => self.obj_palettes[0].update(value),
-            0xFF49 => self.obj_palettes[1].update(value),
+            0xFF47 => self.monochrome_bg_palette.update(value),
+            0xFF48 => self.monochrome_obj_palettes[0].update(value),
+            0xFF49 => self.monochrome_obj_palettes[1].update(value),
             0xFF4A => self.wy = value,
             0xFF4B => self.wx = value,
             _ => unimplemented!("PPU: writing to address: {:#04x}", address),
@@ -834,6 +1063,8 @@ impl<L: lcd::LCD> MemReadWriter for PPU<L> {
 
 #[cfg(test)]
 mod tests {
+    use crate::{oam::OAM, vram::VRAM};
+
     use super::*;
 
     #[test]
@@ -875,6 +1106,85 @@ mod tests {
                 let got = get_color_id_from_two_bytes(tc.bytes.0, tc.bytes.1, i as u8);
                 assert_eq!(e, got);
             }
+        }
+    }
+
+    #[test]
+    fn test_cgb_bg_color_palette_access() {
+        cgb_color_palette_access_no_auto_inc(BG_COLOR_PALETTE_SPEC_REG, BG_COLOR_PALETTE_DATA_REG);
+        cgb_color_palette_access_with_auto_inc(
+            BG_COLOR_PALETTE_SPEC_REG,
+            BG_COLOR_PALETTE_DATA_REG,
+        );
+    }
+
+    #[test]
+    fn test_cgb_obj_color_palette_access() {
+        cgb_color_palette_access_no_auto_inc(
+            OBJ_COLOR_PALETTE_SPEC_REG,
+            OBJ_COLOR_PALETTE_DATA_REG,
+        );
+        cgb_color_palette_access_with_auto_inc(
+            OBJ_COLOR_PALETTE_SPEC_REG,
+            OBJ_COLOR_PALETTE_DATA_REG,
+        );
+    }
+
+    struct DummyLCD;
+    impl LCD for DummyLCD {}
+
+    fn cgb_color_palette_access_no_auto_inc(spec_reg: u16, data_reg: u16) {
+        let mut ppu = PPU::new(
+            &Config {
+                mode: mode::Mode::CGB,
+                rom: vec![],
+                headless_mode: false,
+                bootrom: None,
+                log_file_path: None,
+            },
+            VRAM::new(mode::Mode::CGB),
+            OAM::new(),
+            DummyLCD,
+        );
+
+        for i in 0..64 {
+            ppu.write_byte(spec_reg, i);
+            ppu.write_byte(data_reg, i);
+        }
+
+        for i in 0..64 {
+            ppu.write_byte(spec_reg, i);
+            let expected = i;
+            assert_eq!(expected, ppu.read_byte(data_reg));
+        }
+    }
+
+    fn cgb_color_palette_access_with_auto_inc(spec_reg: u16, data_reg: u16) {
+        let mut ppu = PPU::new(
+            &Config {
+                mode: mode::Mode::CGB,
+                rom: vec![],
+                headless_mode: false,
+                bootrom: None,
+                log_file_path: None,
+            },
+            VRAM::new(mode::Mode::CGB),
+            OAM::new(),
+            DummyLCD,
+        );
+
+        let auto_inc_bit = BIT_7;
+        ppu.write_byte(spec_reg, auto_inc_bit);
+        for i in 0..64 {
+            ppu.write_byte(data_reg, i);
+        }
+
+        let auto_inc_bit = BIT_7;
+        ppu.write_byte(spec_reg, auto_inc_bit);
+        for i in 0..65 {
+            let expected = i % 64;
+            assert_eq!(expected, ppu.read_byte(data_reg));
+            ppu.write_byte(data_reg, 0); // trigger inc
         }
     }
 }
