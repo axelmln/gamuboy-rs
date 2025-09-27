@@ -320,9 +320,7 @@ impl<S: GameSave> MemReadWriter for MBC5<S> {
                     self.ram[addr] = value;
                 }
             }
-            _ => {
-                unreachable!("invalid write address MBC5: {:#04x}", address)
-            }
+            _ => {}
         }
     }
 }
