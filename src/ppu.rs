@@ -7,8 +7,7 @@ use crate::{
     config::Config,
     interrupts::InterruptRegisters,
     lcd::{
-        self, LCD, PIXELS_HEIGHT, PIXELS_WIDTH, RGB, RGB_BLACK, RGB_DARK_GRAY, RGB_LIGHT_GRAY,
-        RGB_WHITE,
+        self, LCD, PIXELS_HEIGHT, PIXELS_WIDTH, RGB_BLACK, RGB_DARK_GRAY, RGB_LIGHT_GRAY, RGB_WHITE,
     },
     memory::MemReadWriter,
     mode, oam, vram,
@@ -257,7 +256,7 @@ impl BGWinTileDataArea {
 
 #[derive(Clone, Debug)]
 struct LCDC {
-    bg_win_enable: bool,
+    bg_win_enable_or_priority: bool,
     obj_enable: bool,
     double_height_obj: bool,
     bg_tile_map_area: BGWinTileMapArea,
@@ -270,7 +269,7 @@ struct LCDC {
 impl LCDC {
     fn new() -> Self {
         Self {
-            bg_win_enable: false,
+            bg_win_enable_or_priority: false,
             obj_enable: false,
             double_height_obj: false,
             bg_tile_map_area: BGWinTileMapArea::First,
@@ -282,7 +281,7 @@ impl LCDC {
     }
 
     fn read(&self) -> u8 {
-        self.bg_win_enable as u8
+        self.bg_win_enable_or_priority as u8
             | (self.obj_enable as u8) << 1
             | (self.double_height_obj as u8) << 2
             | ((self.bg_tile_map_area == BGWinTileMapArea::Second) as u8) << 3
@@ -293,7 +292,7 @@ impl LCDC {
     }
 
     fn write(&mut self, value: u8) {
-        self.bg_win_enable = value & 1 != 0;
+        self.bg_win_enable_or_priority = value & 1 != 0;
         self.obj_enable = value & 2 != 0;
         self.double_height_obj = value & 4 != 0;
         self.bg_tile_map_area = BGWinTileMapArea::from(value & 8);
@@ -424,12 +423,15 @@ pub enum DMARequest {
     },
 }
 
-fn mirror_bg_tile_point_if_needed(loc: u8, flip: bool) -> usize {
-    (if flip {
-        (loc / 8 * 8) + (7 - (loc % 8))
-    } else {
-        loc
-    }) as usize
+fn cgb_has_obj_priority_over_bg(
+    lcdc_bg_priority: bool,
+    oam_attr_bg_priority: bool,
+    bg_attr_bg_priority: bool,
+) -> bool {
+    if !lcdc_bg_priority {
+        return true;
+    }
+    !oam_attr_bg_priority && !bg_attr_bg_priority
 }
 
 #[derive(Clone)]
@@ -440,7 +442,7 @@ pub struct PPU<L: LCD + 'static> {
 
     dots: u32,
 
-    frame_buffer: Vec<Vec<RGB>>,
+    frame_buffer: lcd::FrameBuffer,
 
     vram: vram::VRAM,
     oam: oam::OAM,
@@ -590,27 +592,14 @@ impl<L: lcd::LCD> PPU<L> {
         }
     }
 
-    fn bg_tile_coords(
-        &self,
-        x: u8,
-        y: u8,
-        tile_attributes: &Option<BGMapAttributes>,
-    ) -> (usize, usize) {
+    fn buffer_pix_bg(&mut self, x: u8, bg_win_color_id: &mut u8, bg_win_attr_priority: &mut bool) {
         match self.gb_mode {
-            mode::Mode::CGB => {
-                let ta = tile_attributes.as_ref().unwrap();
-                (
-                    mirror_bg_tile_point_if_needed(x, ta.x_flip),
-                    mirror_bg_tile_point_if_needed(y, ta.y_flip),
-                )
+            mode::Mode::DMG => {
+                if !self.lcdc.bg_win_enable_or_priority {
+                    return;
+                }
             }
-            mode::Mode::DMG => (x as usize, y as usize),
-        }
-    }
-
-    fn buffer_pix_bg(&mut self, x: u8, bg_win_color_id: &mut u8) {
-        if !self.lcdc.bg_win_enable {
-            return;
+            _ => {}
         }
 
         let scroll_y = self.scy.wrapping_add(self.ly);
@@ -621,36 +610,73 @@ impl<L: lcd::LCD> PPU<L> {
 
         let base_map_addr = self.lcdc.bg_tile_map_area.clone() as u16;
 
-        self.switch_vram_bank(0);
         let tile_index = self
             .vram
-            .read_byte(base_map_addr + tile_y as u16 + tile_x as u16);
+            .read_at_bank(base_map_addr + tile_y as u16 + tile_x as u16, 0);
 
         let tile_attributes =
             self.get_bg_tile_attributes(base_map_addr + tile_y as u16 + tile_x as u16);
 
+        let vram_bank = match self.gb_mode {
+            mode::Mode::CGB => tile_attributes.as_ref().unwrap().bank,
+            mode::Mode::DMG => 0,
+        };
+
         let tile_addr = self.lcdc.bg_win_tile_data_area.get_tile_address(tile_index);
 
-        let tile_y_offset = scroll_y % 8 * 2;
+        let tile_x_offset = match self.gb_mode {
+            mode::Mode::CGB => {
+                if tile_attributes.as_ref().unwrap().x_flip {
+                    7 - (scroll_x % 8)
+                } else {
+                    scroll_x % 8
+                }
+            }
+            mode::Mode::DMG => scroll_x % 8,
+        };
+        let tile_y_offset = match self.gb_mode {
+            mode::Mode::CGB => {
+                if tile_attributes.as_ref().unwrap().y_flip {
+                    (7 - (scroll_y % 8)) * 2
+                } else {
+                    scroll_y % 8 * 2
+                }
+            }
+            mode::Mode::DMG => scroll_y % 8 * 2,
+        };
         let color_id = get_color_id_from_two_bytes(
-            self.vram.read_byte(tile_addr + tile_y_offset as u16),
-            self.vram.read_byte(tile_addr + tile_y_offset as u16 + 1),
-            scroll_x % 8,
+            self.vram
+                .read_at_bank(tile_addr + tile_y_offset as u16, vram_bank),
+            self.vram
+                .read_at_bank(tile_addr + tile_y_offset as u16 + 1, vram_bank),
+            tile_x_offset,
         );
-        *bg_win_color_id = color_id;
 
-        let (x, y) = self.bg_tile_coords(x, self.ly, &tile_attributes);
+        *bg_win_color_id = color_id;
+        match self.gb_mode {
+            mode::Mode::CGB => *bg_win_attr_priority = tile_attributes.as_ref().unwrap().priority,
+            _ => {}
+        }
 
         let pixel = self
             .get_bg_palette(tile_attributes)
             .get_color_from_id(color_id);
 
-        self.frame_buffer[y][x] = pixel;
+        self.frame_buffer[self.ly as usize][x as usize] = pixel;
     }
 
-    fn buffer_pix_win(&mut self, x: u8, bg_win_color_id: &mut u8) {
-        if !self.lcdc.bg_win_enable || !self.is_win_enabled() {
-            return;
+    fn buffer_pix_win(&mut self, x: u8, bg_win_color_id: &mut u8, bg_win_attr_priority: &mut bool) {
+        match self.gb_mode {
+            mode::Mode::DMG => {
+                if !self.lcdc.bg_win_enable_or_priority || !self.is_win_enabled() {
+                    return;
+                }
+            }
+            mode::Mode::CGB => {
+                if !self.is_win_enabled() {
+                    return;
+                }
+            }
         }
 
         let wx = if self.wx < 7 { 0 } else { self.wx - 7 };
@@ -660,45 +686,88 @@ impl<L: lcd::LCD> PPU<L> {
 
         let win_y = self.ly - self.wy;
         let tile_y = win_y as u16 / 8 * 32;
-        let tile_y_offset = win_y % 8 * 2;
 
         let win_x = x - wx;
         let tile_x = win_x as u16 / 8;
 
         let base_map_addr = self.lcdc.win_tile_map_area.clone() as u16;
 
-        self.switch_vram_bank(0);
-        let tile_index = self.vram.read_byte(base_map_addr + tile_y + tile_x);
+        let tile_index = self.vram.read_at_bank(base_map_addr + tile_y + tile_x, 0);
 
         let tile_attributes =
             self.get_bg_tile_attributes(base_map_addr + tile_y as u16 + tile_x as u16);
 
+        let vram_bank = match self.gb_mode {
+            mode::Mode::CGB => tile_attributes.as_ref().unwrap().bank,
+            mode::Mode::DMG => 0,
+        };
+
         let tile_addr = self.lcdc.bg_win_tile_data_area.get_tile_address(tile_index);
 
+        let tile_x_offset = match self.gb_mode {
+            mode::Mode::CGB => {
+                if tile_attributes.as_ref().unwrap().x_flip {
+                    7 - (win_x % 8)
+                } else {
+                    win_x % 8
+                }
+            }
+            mode::Mode::DMG => win_x % 8,
+        };
+        let tile_y_offset = match self.gb_mode {
+            mode::Mode::CGB => {
+                if tile_attributes.as_ref().unwrap().y_flip {
+                    (7 - (win_y % 8)) * 2
+                } else {
+                    win_y % 8 * 2
+                }
+            }
+            mode::Mode::DMG => win_y % 8 * 2,
+        };
         let color_id = get_color_id_from_two_bytes(
-            self.vram.read_byte(tile_addr + tile_y_offset as u16),
-            self.vram.read_byte(tile_addr + tile_y_offset as u16 + 1),
-            win_x % 8,
+            self.vram
+                .read_at_bank(tile_addr + tile_y_offset as u16, vram_bank),
+            self.vram
+                .read_at_bank(tile_addr + tile_y_offset as u16 + 1, vram_bank),
+            tile_x_offset,
         );
-        *bg_win_color_id = color_id;
 
-        let (x, y) = self.bg_tile_coords(x, self.ly, &tile_attributes);
+        *bg_win_color_id = color_id;
+        match self.gb_mode {
+            mode::Mode::CGB => *bg_win_attr_priority = tile_attributes.as_ref().unwrap().priority,
+            _ => {}
+        }
 
         let pixel = self
             .get_bg_palette(tile_attributes)
             .get_color_from_id(color_id);
 
-        self.frame_buffer[y][x] = pixel;
+        self.frame_buffer[self.ly as usize][x as usize] = pixel;
     }
 
-    fn buffer_pix_obj(&mut self, x: u8, bg_win_color_id: u8) {
+    fn buffer_pix_obj(&mut self, x: u8, bg_win_color_id: u8, bg_win_attr_priority: bool) {
         if !self.lcdc.obj_enable {
             return;
         }
 
         for obj_attr in &self.line_objects {
-            if obj_attr.flags.bg_win_priority && bg_win_color_id != 0 {
-                continue;
+            match self.gb_mode {
+                mode::Mode::CGB => {
+                    if bg_win_color_id != 0
+                        && !cgb_has_obj_priority_over_bg(
+                            self.lcdc.bg_win_enable_or_priority,
+                            obj_attr.flags.bg_win_priority,
+                            bg_win_attr_priority,
+                        )
+                    {
+                        continue;
+                    }
+                }
+                mode::Mode::DMG => {
+                    if obj_attr.flags.bg_win_priority && bg_win_color_id != 0 {
+                        continue;
+                    }
+                }
             }
 
             let is_in_tile = x as isize >= obj_attr.x_pos as isize - 8 && x < obj_attr.x_pos;
@@ -726,17 +795,13 @@ impl<L: lcd::LCD> PPU<L> {
             let y_offset = (obj_y as u16 % 8) * 2;
             let tile_addr = vram::BASE_ADDRESS + tile_index as u16 * 16 + y_offset;
 
-            match self.gb_mode {
-                // In CGB Mode this could be either in VRAM bank 0 or 1, depending on bit 3 of the following byte. (https://gbdev.io/pandocs/OAM.html#byte-2--tile-index)
-                mode::Mode::CGB => {
-                    self.vram
-                        .write_byte(vram::BANK_REGISTER, obj_attr.flags.vram_bank);
-                }
-                _ => {}
-            }
+            let vram_bank = match self.gb_mode {
+                mode::Mode::CGB => obj_attr.flags.vram_bank,
+                mode::Mode::DMG => 0,
+            };
 
-            let tile_high_byte = self.vram.read_byte(tile_addr);
-            let tile_low_byte = self.vram.read_byte(tile_addr + 1);
+            let tile_high_byte = self.vram.read_at_bank(tile_addr, vram_bank);
+            let tile_low_byte = self.vram.read_at_bank(tile_addr + 1, vram_bank);
 
             let obj_x = x + 8 - obj_attr.x_pos;
             let obj_x = if obj_attr.flags.x_flip {
@@ -762,10 +827,11 @@ impl<L: lcd::LCD> PPU<L> {
         }
 
         let mut bg_win_color_id = 0;
+        let mut bg_win_attr_priority = false;
 
-        self.buffer_pix_bg(x, &mut bg_win_color_id);
-        self.buffer_pix_win(x, &mut bg_win_color_id);
-        self.buffer_pix_obj(x, bg_win_color_id);
+        self.buffer_pix_bg(x, &mut bg_win_color_id, &mut bg_win_attr_priority);
+        self.buffer_pix_win(x, &mut bg_win_color_id, &mut bg_win_attr_priority);
+        self.buffer_pix_obj(x, bg_win_color_id, bg_win_attr_priority);
     }
 
     fn buffer_line(&mut self) {
@@ -791,28 +857,23 @@ impl<L: lcd::LCD> PPU<L> {
             self.line_objects.push(obj_attr);
         }
 
-        self.line_objects.sort_by_key(|o| o.x_pos);
+        match self.gb_mode {
+            mode::Mode::DMG => self.line_objects.sort_by_key(|o| o.x_pos),
+            mode::Mode::CGB => {}
+        }
+
         self.line_objects.truncate(10);
     }
 
-    fn get_bg_tile_attributes(&mut self, address: u16) -> Option<BGMapAttributes> {
+    fn get_bg_tile_attributes(&self, address: u16) -> Option<BGMapAttributes> {
         match self.gb_mode {
             mode::Mode::CGB => {
-                self.switch_vram_bank(1);
-                let tile_attributes_byte = self.vram.read_byte(address);
+                let tile_attributes_byte = self.vram.read_at_bank(address, 1);
                 let tile_attributes = BGMapAttributes::new(tile_attributes_byte);
-                self.switch_vram_bank(tile_attributes.bank);
 
                 Some(tile_attributes)
             }
             mode::Mode::DMG => None,
-        }
-    }
-
-    fn switch_vram_bank(&mut self, bank: u8) {
-        match self.gb_mode {
-            mode::Mode::CGB => self.vram.write_byte(vram::BANK_REGISTER, bank),
-            _ => {}
         }
     }
 
@@ -1217,6 +1278,76 @@ mod tests {
             let expected = i % 64;
             assert_eq!(expected, ppu.read_byte(data_reg));
             ppu.write_byte(data_reg, 0); // trigger inc
+        }
+    }
+
+    #[test]
+    fn test_cgb_bg_to_obj_priority() {
+        // https://gbdev.io/pandocs/Tile_Maps.html#bg-to-obj-priority-in-cgb-mode
+
+        struct TestCase {
+            lcdc_bg_priority: bool,
+            oam_attr_bg_priority: bool,
+            bg_attr_bg_priority: bool,
+            expected: bool,
+        }
+        let test_cases = &[
+            TestCase {
+                lcdc_bg_priority: false,
+                oam_attr_bg_priority: false,
+                bg_attr_bg_priority: false,
+                expected: true,
+            },
+            TestCase {
+                lcdc_bg_priority: false,
+                oam_attr_bg_priority: false,
+                bg_attr_bg_priority: true,
+                expected: true,
+            },
+            TestCase {
+                lcdc_bg_priority: false,
+                oam_attr_bg_priority: true,
+                bg_attr_bg_priority: false,
+                expected: true,
+            },
+            TestCase {
+                lcdc_bg_priority: false,
+                oam_attr_bg_priority: true,
+                bg_attr_bg_priority: true,
+                expected: true,
+            },
+            TestCase {
+                lcdc_bg_priority: true,
+                oam_attr_bg_priority: false,
+                bg_attr_bg_priority: false,
+                expected: true,
+            },
+            TestCase {
+                lcdc_bg_priority: true,
+                oam_attr_bg_priority: false,
+                bg_attr_bg_priority: true,
+                expected: false,
+            },
+            TestCase {
+                lcdc_bg_priority: true,
+                oam_attr_bg_priority: true,
+                bg_attr_bg_priority: false,
+                expected: false,
+            },
+            TestCase {
+                lcdc_bg_priority: true,
+                oam_attr_bg_priority: true,
+                bg_attr_bg_priority: true,
+                expected: false,
+            },
+        ];
+        for tc in test_cases {
+            let got = cgb_has_obj_priority_over_bg(
+                tc.lcdc_bg_priority,
+                tc.oam_attr_bg_priority,
+                tc.bg_attr_bg_priority,
+            );
+            assert_eq!(tc.expected, got);
         }
     }
 }

@@ -9,7 +9,7 @@ const BANK_SIZE: usize = (END_ADDRESS - BASE_ADDRESS + 1) as usize;
 
 #[derive(Clone)]
 pub struct VRAM {
-    mem: [u8; 0xA000],
+    mem: [u8; BANK_SIZE * 2],
     bank: u8,
     mode: Mode,
 }
@@ -17,7 +17,7 @@ pub struct VRAM {
 impl VRAM {
     pub fn new(mode: Mode) -> Self {
         Self {
-            mem: [0; 0xA000],
+            mem: [0; BANK_SIZE * 2],
             bank: 0,
             mode,
         }
@@ -25,10 +25,18 @@ impl VRAM {
 
     fn get_address(&self, address: u16) -> usize {
         match self.mode {
-            Mode::DMG => address as usize,
-            Mode::CGB => BANK_SIZE * self.bank as usize + address as usize,
+            Mode::DMG => compute_address_from_bank(address, 0),
+            Mode::CGB => compute_address_from_bank(address, self.bank),
         }
     }
+
+    pub fn read_at_bank(&self, address: u16, bank: u8) -> u8 {
+        self.mem[compute_address_from_bank(address, bank)]
+    }
+}
+
+fn compute_address_from_bank(address: u16, bank: u8) -> usize {
+    (BANK_SIZE * bank as usize + address as usize) - (BASE_ADDRESS as usize)
 }
 
 impl MemReadWriter for VRAM {
@@ -42,9 +50,7 @@ impl MemReadWriter for VRAM {
         }
 
         match address {
-            BASE_ADDRESS..=END_ADDRESS => {
-                self.mem[self.get_address(address) - (BASE_ADDRESS as usize)]
-            }
+            BASE_ADDRESS..=END_ADDRESS => self.mem[self.get_address(address)],
             _ => unreachable!("VRAM reading address {:#04x}", address),
         }
     }
@@ -59,9 +65,7 @@ impl MemReadWriter for VRAM {
         }
 
         match address {
-            BASE_ADDRESS..=END_ADDRESS => {
-                self.mem[self.get_address(address) - (BASE_ADDRESS as usize)] = value
-            }
+            BASE_ADDRESS..=END_ADDRESS => self.mem[self.get_address(address)] = value,
             _ => unreachable!("VRAM writing address {:#04x}", address),
         }
     }
