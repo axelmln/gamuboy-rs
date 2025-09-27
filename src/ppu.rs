@@ -424,6 +424,14 @@ pub enum DMARequest {
     },
 }
 
+fn mirror_bg_tile_point_if_needed(loc: u8, flip: bool) -> usize {
+    (if flip {
+        (loc / 8 * 8) + (7 - (loc % 8))
+    } else {
+        loc
+    }) as usize
+}
+
 #[derive(Clone)]
 pub struct PPU<L: LCD + 'static> {
     gb_mode: mode::Mode,
@@ -582,6 +590,24 @@ impl<L: lcd::LCD> PPU<L> {
         }
     }
 
+    fn bg_tile_coords(
+        &self,
+        x: u8,
+        y: u8,
+        tile_attributes: &Option<BGMapAttributes>,
+    ) -> (usize, usize) {
+        match self.gb_mode {
+            mode::Mode::CGB => {
+                let ta = tile_attributes.as_ref().unwrap();
+                (
+                    mirror_bg_tile_point_if_needed(x, ta.x_flip),
+                    mirror_bg_tile_point_if_needed(y, ta.y_flip),
+                )
+            }
+            mode::Mode::DMG => (x as usize, y as usize),
+        }
+    }
+
     fn buffer_pix_bg(&mut self, x: u8, bg_win_color_id: &mut u8) {
         if !self.lcdc.bg_win_enable {
             return;
@@ -613,10 +639,13 @@ impl<L: lcd::LCD> PPU<L> {
         );
         *bg_win_color_id = color_id;
 
+        let (x, y) = self.bg_tile_coords(x, self.ly, &tile_attributes);
+
         let pixel = self
             .get_bg_palette(tile_attributes)
             .get_color_from_id(color_id);
-        self.frame_buffer[self.ly as usize][x as usize] = pixel;
+
+        self.frame_buffer[y][x] = pixel;
     }
 
     fn buffer_pix_win(&mut self, x: u8, bg_win_color_id: &mut u8) {
@@ -653,10 +682,13 @@ impl<L: lcd::LCD> PPU<L> {
         );
         *bg_win_color_id = color_id;
 
+        let (x, y) = self.bg_tile_coords(x, self.ly, &tile_attributes);
+
         let pixel = self
             .get_bg_palette(tile_attributes)
             .get_color_from_id(color_id);
-        self.frame_buffer[self.ly as usize][x as usize] = pixel;
+
+        self.frame_buffer[y][x] = pixel;
     }
 
     fn buffer_pix_obj(&mut self, x: u8, bg_win_color_id: u8) {
