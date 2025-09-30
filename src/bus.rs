@@ -127,9 +127,8 @@ impl<
             | 0xFF40..=0xFF4B
             | 0xFF4F
             | 0xFF51..=0xFF55
-            | ppu::BG_COLOR_PALETTE_SPEC_REG..=ppu::OBJ_COLOR_PALETTE_DATA_REG => {
-                self.ppu.read_byte(address)
-            }
+            | ppu::BG_COLOR_PALETTE_SPEC_REG..=ppu::OBJ_COLOR_PALETTE_DATA_REG
+            | 0xFF6C => self.ppu.read_byte(address),
             0xFF0F | 0xFFFF => self.int_reg.read_byte(address),
             0xFF00 => self.joypad.read_byte(address),
             0xFF04..=0xFF07 => self.timer.read_byte(address),
@@ -156,9 +155,8 @@ impl<
             | 0xFF40..=0xFF4B
             | 0xFF4F
             | 0xFF51..=0xFF55
-            | ppu::BG_COLOR_PALETTE_SPEC_REG..=ppu::OBJ_COLOR_PALETTE_DATA_REG => {
-                self.ppu.write_byte(address, value)
-            }
+            | ppu::BG_COLOR_PALETTE_SPEC_REG..=ppu::OBJ_COLOR_PALETTE_DATA_REG
+            | 0xFF6C => self.ppu.write_byte(address, value),
             0xFF0F | 0xFFFF => self.int_reg.write_byte(address, value),
             0xFF00 => self.joypad.write_byte(address, value),
             0xFF04..=0xFF07 => self.timer.write_byte(address, value),

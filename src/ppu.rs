@@ -423,6 +423,28 @@ pub enum DMARequest {
     },
 }
 
+#[derive(Clone)]
+enum ObjectPriorityMode {
+    DMG,
+    CGB,
+}
+
+impl ObjectPriorityMode {
+    fn new(value: u8) -> Self {
+        match value & 1 {
+            0 => Self::DMG,
+            _ => Self::CGB,
+        }
+    }
+
+    fn as_u8(&self) -> u8 {
+        match self {
+            Self::DMG => 0,
+            Self::CGB => 1,
+        }
+    }
+}
+
 fn cgb_has_obj_priority_over_bg(
     lcdc_bg_priority: bool,
     oam_attr_bg_priority: bool,
@@ -488,6 +510,8 @@ pub struct PPU<L: LCD + 'static> {
     low_vram_dma_dst: u8,
 
     vram_dma_transfer_len: u8,
+
+    object_priority_mode: ObjectPriorityMode,
 }
 
 impl<L: lcd::LCD> PPU<L> {
@@ -558,6 +582,8 @@ impl<L: lcd::LCD> PPU<L> {
             low_vram_dma_dst: 0,
 
             vram_dma_transfer_len: 0,
+
+            object_priority_mode: ObjectPriorityMode::DMG,
         }
     }
 
@@ -857,9 +883,9 @@ impl<L: lcd::LCD> PPU<L> {
             self.line_objects.push(obj_attr);
         }
 
-        match self.gb_mode {
-            mode::Mode::DMG => self.line_objects.sort_by_key(|o| o.x_pos),
-            mode::Mode::CGB => {}
+        match self.object_priority_mode {
+            ObjectPriorityMode::DMG => self.line_objects.sort_by_key(|o| o.x_pos),
+            ObjectPriorityMode::CGB => {}
         }
 
         self.line_objects.truncate(10);
@@ -1068,6 +1094,8 @@ impl<L: lcd::LCD> MemReadWriter for PPU<L> {
                 OBJ_COLOR_PALETTE_SPEC_REG => return self.obj_palette_ram.read_spec(),
                 OBJ_COLOR_PALETTE_DATA_REG => return self.obj_palette_ram.read_data(),
 
+                0xFF6C => return self.object_priority_mode.as_u8(),
+
                 _ => {}
             },
             _ => {}
@@ -1121,6 +1149,8 @@ impl<L: lcd::LCD> MemReadWriter for PPU<L> {
 
                 OBJ_COLOR_PALETTE_SPEC_REG => return self.obj_palette_ram.write_spec(value),
                 OBJ_COLOR_PALETTE_DATA_REG => return self.obj_palette_ram.write_data(value),
+
+                0xFF6C => return self.object_priority_mode = ObjectPriorityMode::new(value),
 
                 _ => {}
             },
