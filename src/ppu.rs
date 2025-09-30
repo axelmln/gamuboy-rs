@@ -994,15 +994,18 @@ impl<L: lcd::LCD> PPU<L> {
         self.vram.write_byte(address, value);
     }
 
-    pub fn check_dma_request(&mut self) -> Option<DMARequest> {
-        let req = self.dma_request.clone();
+    pub fn check_dma_request(&self) -> Option<DMARequest> {
+        self.dma_request.clone()
+    }
+
+    pub fn dma_transfer_done(&mut self, req: DMARequest) {
         match req {
-            Some(DMARequest::VRAM {
+            DMARequest::VRAM {
                 src,
                 dst,
                 is_hdma: true,
                 ..
-            }) => {
+            } => {
                 if self.vram_dma_transfer_len == 0 {
                     self.pending_dma_request = None;
                 } else {
@@ -1019,8 +1022,6 @@ impl<L: lcd::LCD> PPU<L> {
         }
 
         self.dma_request = None;
-
-        req
     }
 
     pub fn step(&mut self, int_reg: &mut InterruptRegisters, cycles: u8) {
@@ -1055,7 +1056,7 @@ impl<L: lcd::LCD> MemReadWriter for PPU<L> {
             mode::Mode::CGB => match address {
                 0xFF51..=0xFF54 => return 0xFF,
                 0xFF55 => {
-                    if self.dma_request.is_some() {
+                    if self.pending_dma_request.is_some() {
                         return self.vram_dma_transfer_len;
                     }
                     return 0xFF;
@@ -1102,7 +1103,7 @@ impl<L: lcd::LCD> MemReadWriter for PPU<L> {
                     let dst = (self.high_vram_dma_dst as u16) << 8 | self.low_vram_dma_dst as u16;
                     self.vram_dma_transfer_len = value & 0x7F;
                     let len = (self.vram_dma_transfer_len as u16 + 1) * 0x10;
-                    let is_hdma = value & BIT_7 == 1;
+                    let is_hdma = value & BIT_7 == BIT_7;
                     let req = DMARequest::VRAM {
                         src,
                         dst,

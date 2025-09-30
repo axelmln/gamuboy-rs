@@ -46,7 +46,7 @@ impl<B: Bus> CPU<B> {
 
     fn read_byte(&mut self, address: u16) -> u8 {
         let v = self.bus.read_byte(address);
-        self.bus.step_peripherals(4);
+        self.bus.step_peripherals(4, false);
         self.cycles_synced += 4;
         v
     }
@@ -59,7 +59,7 @@ impl<B: Bus> CPU<B> {
 
     fn write_byte(&mut self, address: u16, value: u8) {
         self.bus.write_byte(address, value);
-        self.bus.step_peripherals(4);
+        self.bus.step_peripherals(4, false);
         self.cycles_synced += 4;
     }
 
@@ -2255,7 +2255,7 @@ impl<B: Bus> CPU<B> {
 
         if self.is_halted {
             let cycles = 4 + self.check_interrupts();
-            self.bus.step_peripherals(cycles);
+            self.bus.step_peripherals(cycles, true);
             return cycles;
         }
 
@@ -2277,7 +2277,8 @@ impl<B: Bus> CPU<B> {
         let cycles = cycles + self.check_interrupts();
 
         if cycles > self.cycles_synced {
-            self.bus.step_peripherals(cycles - self.cycles_synced);
+            self.bus
+                .step_peripherals(cycles - self.cycles_synced, false);
         }
         self.cycles_synced = 0;
 
@@ -2663,7 +2664,7 @@ mod tests {
 
         fn switch_speed(&mut self) {}
 
-        fn step_peripherals(&mut self, _cycles: u8) {}
+        fn step_peripherals(&mut self, _cycles: u8, _is_halted: bool) {}
     }
 
     fn make_test_cpu() -> CPU<FakeBus> {

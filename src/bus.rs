@@ -24,7 +24,7 @@ pub trait Bus {
 
     fn switch_speed(&mut self);
 
-    fn step_peripherals(&mut self, cycles: u8);
+    fn step_peripherals(&mut self, cycles: u8, cpu_halted: bool);
 }
 
 pub struct SystemBus<
@@ -182,7 +182,7 @@ impl<
         }
     }
 
-    fn step_peripherals(&mut self, cycles: u8) {
+    fn step_peripherals(&mut self, cycles: u8, cpu_halted: bool) {
         let normal_speed_cycles = if self.double_speed_mode {
             cycles / 2
         } else {
@@ -197,8 +197,21 @@ impl<
         if let Some(req) = self.ppu.check_dma_request() {
             // TODO: handle with cycle accuracy
             match req {
-                DMARequest::OAM(value) => self.oam_dma_transfer(value),
-                DMARequest::VRAM { src, dst, len, .. } => self.vram_dma_transfer(src, dst, len),
+                DMARequest::OAM(value) => {
+                    self.oam_dma_transfer(value);
+                    self.ppu.dma_transfer_done(req);
+                }
+                DMARequest::VRAM {
+                    src,
+                    dst,
+                    len,
+                    is_hdma,
+                } => {
+                    if !is_hdma || !cpu_halted {
+                        self.vram_dma_transfer(src, dst, len);
+                        self.ppu.dma_transfer_done(req);
+                    }
+                }
             }
         }
 
