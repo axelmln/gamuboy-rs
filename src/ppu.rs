@@ -487,6 +487,7 @@ pub struct PPU<L: LCD + 'static> {
 
     wy: u8,
     wx: u8,
+    window_internal_line_counter: u8,
 
     monochrome_bg_palette: MonochromePalette,
     monochrome_obj_palettes: [MonochromePalette; 2],
@@ -559,6 +560,7 @@ impl<L: lcd::LCD> PPU<L> {
 
             wy: 0,
             wx: 0,
+            window_internal_line_counter: 0,
 
             monochrome_bg_palette: MonochromePalette::new(),
             monochrome_obj_palettes: array::from_fn(|_| MonochromePalette::new()),
@@ -594,7 +596,11 @@ impl<L: lcd::LCD> PPU<L> {
     }
 
     fn is_win_enabled(&self) -> bool {
-        self.lcdc.win_enable && self.ly >= self.wy
+        let enabled = self.lcdc.win_enable && self.ly >= self.wy;
+        match self.gb_mode {
+            mode::Mode::DMG => self.lcdc.bg_win_enable_or_priority && enabled,
+            mode::Mode::CGB => enabled,
+        }
     }
 
     fn get_bg_palette(&self, tile_attr: Option<BGMapAttributes>) -> Box<dyn Palette> {
@@ -692,17 +698,8 @@ impl<L: lcd::LCD> PPU<L> {
     }
 
     fn buffer_pix_win(&mut self, x: u8, bg_win_color_id: &mut u8, bg_win_attr_priority: &mut bool) {
-        match self.gb_mode {
-            mode::Mode::DMG => {
-                if !self.lcdc.bg_win_enable_or_priority || !self.is_win_enabled() {
-                    return;
-                }
-            }
-            mode::Mode::CGB => {
-                if !self.is_win_enabled() {
-                    return;
-                }
-            }
+        if !self.is_win_enabled() {
+            return;
         }
 
         let wx = if self.wx < 7 { 0 } else { self.wx - 7 };
@@ -710,7 +707,11 @@ impl<L: lcd::LCD> PPU<L> {
             return;
         }
 
-        let win_y = self.ly - self.wy;
+        let win_y = self.window_internal_line_counter;
+        if x as usize == lcd::PIXELS_WIDTH - 1 {
+            self.window_internal_line_counter += 1;
+        }
+
         let tile_y = win_y as u16 / 8 * 32;
 
         let win_x = x - wx;
@@ -926,6 +927,7 @@ impl<L: lcd::LCD> PPU<L> {
     fn enter_vblank(&mut self, int_reg: &mut InterruptRegisters) {
         int_reg.request_vblank();
         self.mode = Mode::VBlank;
+        self.window_internal_line_counter = 0;
     }
 
     fn enter_oam(&mut self) {
