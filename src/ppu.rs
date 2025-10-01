@@ -359,7 +359,7 @@ struct ObjectFlags {
 impl From<u8> for ObjectFlags {
     fn from(value: u8) -> Self {
         Self {
-            cgb_palette: value & 3,
+            cgb_palette: value & 0b111,
             vram_bank: value >> 3 & 1,
             dmg_palette: value >> 4 & 1,
             x_flip: value >> 5 & 1 != 0,
