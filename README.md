@@ -1,8 +1,8 @@
 # gamuboy-rs
 A Game Boy emulation core written in Rust
 
-<img src="./images/zelda.png" alt="Zelda Link's Awakening" width="300"/> <img src="./images/supermarioland.png" alt="Super Mario land" width="300"/>
-<img src="./images/donkeykong.png" alt="Donkey Kong" width="300"/> <img src="./images/finalfantasy.png" alt="Final Fantasy" width="300"/>
+<img src="./images/zelda.png" alt="Zelda Link's Awakening" width="300"/> <img src="./images/zelda_oos_color.png" alt="Zelda Oracle of Seasons" width="300"/>
+<img src="./images/pokemon_color.png" alt="Pokemon Yellow" width="300"/> <img src="./images/donkeykong.png" alt="Donkey Kong" width="300"/>
 
 ## Example emulators using this library
 
@@ -88,6 +88,7 @@ impl GameSave for FileSaver {
 
 fn main() {
     let cfg = Config {
+        mode: Mode::CGB, // choose a mode -> DMG | CGB
         rom: load_rom(), // load a rom file
         headless_mode: false,
         bootrom: load_bootrom(), // optionally load a bootrom (boot sequence is skipped if not provided)
@@ -129,6 +130,7 @@ fn main() {
 - Timer
 - MBC 1, 2 and 5
 - Game saves
+- CGB mode
 
 
 ### Test suite
@@ -146,9 +148,15 @@ Tested and working:
 - [x] MBC2 tests
 - [x] MBC5 tests
 
+#### MagenTests [https://github.com/alloncm/MagenTests]
+
+- [x] ColorBgOamPriority
+- [x] ColorOamInternalPriority
+- [x] Vram DMA HBlank mode
+
+#### CGB-Acid2 [https://github.com/mattcurrie/cgb-acid2]
+
 
 ### Todo
 - [ ] Support other MBCs
-- [ ] Color support
 - [ ] Serial
-
