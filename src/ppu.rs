@@ -1,7 +1,4 @@
-use std::{
-    array,
-    time::{Duration, Instant},
-};
+use std::array;
 
 use crate::{
     config::Config,
@@ -502,8 +499,6 @@ pub struct PPU<L: LCD + 'static> {
 
     frame_cycles_acc: u32,
 
-    last_frame_instant: Instant,
-
     high_vram_dma_src: u8,
     low_vram_dma_src: u8,
 
@@ -574,8 +569,6 @@ impl<L: lcd::LCD> PPU<L> {
             pending_dma_request: None,
 
             frame_cycles_acc: 0,
-
-            last_frame_instant: Instant::now(),
 
             high_vram_dma_src: 0,
             low_vram_dma_src: 0,
@@ -1004,16 +997,6 @@ impl<L: lcd::LCD> PPU<L> {
         self.mode = Mode::OAM;
     }
 
-    fn cap_fps(&mut self) {
-        const FRAME_DURATION: Duration = Duration::from_nanos((1_000_000_000.0 / 59.73) as u64);
-        let now = Instant::now();
-        let elapsed = now.duration_since(self.last_frame_instant);
-        if elapsed < FRAME_DURATION {
-            std::thread::sleep(FRAME_DURATION - elapsed);
-        }
-        self.last_frame_instant = Instant::now();
-    }
-
     pub fn write_oam(&mut self, address: u16, value: u8) {
         self.oam.write_byte(address, value);
     }
@@ -1072,8 +1055,6 @@ impl<L: lcd::LCD> PPU<L> {
         if self.frame_cycles_acc >= DOTS_PER_FRAME {
             self.frame_cycles_acc -= DOTS_PER_FRAME;
             self.draw_frame_buffer();
-
-            self.cap_fps();
         }
     }
 }
