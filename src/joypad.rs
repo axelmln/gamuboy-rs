@@ -1,5 +1,6 @@
 use crate::{interrupts::InterruptRegisters, memory::MemReadWriter};
 
+#[derive(Clone)]
 pub enum Button {
     A,
     B,
@@ -10,6 +11,22 @@ pub enum Button {
     Left,
     Up,
     Down,
+}
+
+impl From<u8> for Button {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => Button::A,
+            1 => Button::B,
+            2 => Button::Select,
+            3 => Button::Start,
+            4 => Button::Right,
+            5 => Button::Left,
+            6 => Button::Up,
+            7 => Button::Down,
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
