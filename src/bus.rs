@@ -25,6 +25,7 @@ pub trait Bus {
     fn switch_speed(&mut self);
 
     fn step_peripherals(&mut self, cycles: u8, cpu_halted: bool);
+    fn is_frame_buffer_ready(&mut self) -> bool;
 }
 
 pub struct SystemBus<
@@ -221,5 +222,9 @@ impl<
         self.apu.step(normal_speed_cycles, div_apu_event);
 
         self.joypad.check(&mut self.int_reg);
+    }
+
+    fn is_frame_buffer_ready(&mut self) -> bool {
+        self.ppu.is_frame_buffer_ready()
     }
 }

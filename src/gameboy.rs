@@ -58,6 +58,15 @@ impl<'a, L: LCD, E: Send + 'static, H: EventsHandler<E>, S: StereoPlayer> GameBo
         }
     }
 
+    pub fn step_frame(&mut self) {
+        loop {
+            self.step();
+            if self.cpu.is_frame_buffer_ready() {
+                return;
+            }
+        }
+    }
+
     pub fn step(&mut self) {
         let _cycles = self.cpu.step();
     }

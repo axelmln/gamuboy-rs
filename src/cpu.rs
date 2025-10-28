@@ -2285,6 +2285,10 @@ impl<B: Bus> CPU<B> {
         cycles
     }
 
+    pub fn is_frame_buffer_ready(&mut self) -> bool {
+        self.bus.is_frame_buffer_ready()
+    }
+
     fn call(&mut self, jump: bool) -> (u16, u8) {
         let next_pc = self.pc.wrapping_add(3);
         if jump {
@@ -2665,6 +2669,10 @@ mod tests {
         fn switch_speed(&mut self) {}
 
         fn step_peripherals(&mut self, _cycles: u8, _is_halted: bool) {}
+
+        fn is_frame_buffer_ready(&mut self) -> bool {
+            false
+        }
     }
 
     fn make_test_cpu() -> CPU<FakeBus> {

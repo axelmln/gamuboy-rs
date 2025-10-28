@@ -462,6 +462,7 @@ pub struct PPU<L: LCD + 'static> {
     dots: u32,
 
     frame_buffer: lcd::FrameBuffer,
+    frame_buffer_ready: bool,
 
     vram: vram::VRAM,
     oam: oam::OAM,
@@ -522,6 +523,7 @@ impl<L: lcd::LCD> PPU<L> {
             dots: 0,
 
             frame_buffer: vec![vec![(0, 0, 0); PIXELS_WIDTH]; PIXELS_HEIGHT],
+            frame_buffer_ready: false,
 
             vram,
             oam,
@@ -1035,6 +1037,12 @@ impl<L: lcd::LCD> PPU<L> {
         self.dma_request = None;
     }
 
+    pub fn is_frame_buffer_ready(&mut self) -> bool {
+        let ready = self.frame_buffer_ready;
+        self.frame_buffer_ready = false;
+        ready
+    }
+
     pub fn step(&mut self, int_reg: &mut InterruptRegisters, cycles: u8) {
         if !self.lcdc.lcd_ppu_enable {
             return;
@@ -1055,6 +1063,7 @@ impl<L: lcd::LCD> PPU<L> {
         if self.frame_cycles_acc >= DOTS_PER_FRAME {
             self.frame_cycles_acc -= DOTS_PER_FRAME;
             self.draw_frame_buffer();
+            self.frame_buffer_ready = true;
         }
     }
 }
