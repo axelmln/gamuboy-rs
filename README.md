@@ -8,6 +8,7 @@ A Game Boy emulation core written in Rust
 
 - [gamuboy-rs-gui](https://github.com/axelmln/gamuboy-rs-gui)
 - [gamuboy-rs-cli](https://github.com/axelmln/gamuboy-rs-cli)
+- [webboy](https://github.com/axelmln/webboy)
 
 ## Motivation
 
