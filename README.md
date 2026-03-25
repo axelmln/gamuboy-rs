@@ -19,7 +19,7 @@ Learning about emulation and rust
 Add to your `Cargo.toml`:
 
 ```toml
-gamuboy = { git = "https://github.com/your-username/gamuboy" }
+gamuboy = { git = "https://github.com/axelmln/gamuboy-rs" }
 ```
 
 ### *Example*
