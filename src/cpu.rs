@@ -1,6 +1,10 @@
-use crate::{bus::Bus, config::Config, instr::OP_STOP, mode::Mode, registers};
-
-const INSTRUCTION_PREFIX: u8 = 0xCB;
+use crate::{
+    bus::Bus,
+    config::Config,
+    instr::{cb, op},
+    mode::Mode,
+    registers,
+};
 
 pub struct CPU<B: Bus> {
     mode: Mode,
@@ -74,8 +78,8 @@ impl<B: Bus> CPU<B> {
 
     fn execute(&mut self, instruction_byte: u8) -> Option<(u16, u8)> {
         match instruction_byte {
-            0x00 => Some((self.pc.wrapping_add(1), 4)),
-            OP_STOP => {
+            op::NOP => Some((self.pc.wrapping_add(1), 4)),
+            op::STOP => {
                 self.is_stopped = true;
                 match self.mode {
                     Mode::CGB => self.bus.switch_speed(),
@@ -83,879 +87,879 @@ impl<B: Bus> CPU<B> {
                 }
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x03 => {
+            op::INC_BC => {
                 let val = self.inc_16bits(self.registers.get_bc());
                 self.registers.set_bc(val);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x13 => {
+            op::INC_DE => {
                 let val = self.inc_16bits(self.registers.get_de());
                 self.registers.set_de(val);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x23 => {
+            op::INC_HL => {
                 let val = self.inc_16bits(self.registers.get_hl());
                 self.registers.set_hl(val);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x33 => {
+            op::INC_SP => {
                 self.sp = self.inc_16bits(self.sp);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x04 => {
+            op::INC_B => {
                 self.registers.b = self.inc(self.registers.b);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x14 => {
+            op::INC_D => {
                 self.registers.d = self.inc(self.registers.d);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x24 => {
+            op::INC_H => {
                 self.registers.h = self.inc(self.registers.h);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x34 => {
+            op::INC_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let inc_val = self.inc(mem_val);
                 self.write_byte(hl_reg_val, inc_val);
                 Some((self.pc.wrapping_add(1), 12))
             }
-            0x05 => {
+            op::DEC_B => {
                 self.registers.b = self.dec(self.registers.b);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x15 => {
+            op::DEC_D => {
                 self.registers.d = self.dec(self.registers.d);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x25 => {
+            op::DEC_H => {
                 self.registers.h = self.dec(self.registers.h);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x35 => {
+            op::DEC_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let inc_val = self.dec(mem_val);
                 self.write_byte(hl_reg_val, inc_val);
                 Some((self.pc.wrapping_add(1), 12))
             }
-            0x07 => {
+            op::RLCA => {
                 self.rlca();
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x17 => {
+            op::RLA => {
                 self.rla();
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x27 => {
+            op::DAA => {
                 self.daa();
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x37 => {
+            op::SCF => {
                 self.scf();
                 Some((self.pc.wrapping_add(1), 4))
             }
 
-            0x09 => {
+            op::ADD_HL_BC => {
                 self.addhl(self.registers.get_bc());
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x19 => {
+            op::ADD_HL_DE => {
                 self.addhl(self.registers.get_de());
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x29 => {
+            op::ADD_HL_HL => {
                 self.addhl(self.registers.get_hl());
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x39 => {
+            op::ADD_HL_SP => {
                 self.addhl(self.sp);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x0B => {
+            op::DEC_BC => {
                 let val = self.dec_16bits(self.registers.get_bc());
                 self.registers.set_bc(val);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x1B => {
+            op::DEC_DE => {
                 let val = self.dec_16bits(self.registers.get_de());
                 self.registers.set_de(val);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x2B => {
+            op::DEC_HL => {
                 let val = self.dec_16bits(self.registers.get_hl());
                 self.registers.set_hl(val);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x3B => {
+            op::DEC_SP => {
                 self.sp = self.dec_16bits(self.sp);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x0C => {
+            op::INC_C => {
                 self.registers.c = self.inc(self.registers.c);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x1C => {
+            op::INC_E => {
                 self.registers.e = self.inc(self.registers.e);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x2C => {
+            op::INC_L => {
                 self.registers.l = self.inc(self.registers.l);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x3C => {
+            op::INC_A => {
                 self.registers.a = self.inc(self.registers.a);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x0D => {
+            op::DEC_C => {
                 self.registers.c = self.dec(self.registers.c);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x1D => {
+            op::DEC_E => {
                 self.registers.e = self.dec(self.registers.e);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x2D => {
+            op::DEC_L => {
                 self.registers.l = self.dec(self.registers.l);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x3D => {
+            op::DEC_A => {
                 self.registers.a = self.dec(self.registers.a);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x0F => {
+            op::RRCA => {
                 self.rrca();
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x1F => {
+            op::RRA => {
                 self.rra();
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x2F => {
+            op::CPL => {
                 self.cpl();
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x3F => {
+            op::CCF => {
                 self.ccf();
                 Some((self.pc.wrapping_add(1), 4))
             }
 
-            0x80 => {
+            op::ADD_A_B => {
                 self.add(self.registers.b);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x81 => {
+            op::ADD_A_C => {
                 self.add(self.registers.c);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x82 => {
+            op::ADD_A_D => {
                 self.add(self.registers.d);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x83 => {
+            op::ADD_A_E => {
                 self.add(self.registers.e);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x84 => {
+            op::ADD_A_H => {
                 self.add(self.registers.h);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x85 => {
+            op::ADD_A_L => {
                 self.add(self.registers.l);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x86 => {
+            op::ADD_A_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.add(mem_val);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x87 => {
+            op::ADD_A_A => {
                 self.add(self.registers.a);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x88 => {
+            op::ADC_A_B => {
                 self.adc(self.registers.b);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x89 => {
+            op::ADC_A_C => {
                 self.adc(self.registers.c);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x8A => {
+            op::ADC_A_D => {
                 self.adc(self.registers.d);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x8B => {
+            op::ADC_A_E => {
                 self.adc(self.registers.e);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x8C => {
+            op::ADC_A_H => {
                 self.adc(self.registers.h);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x8D => {
+            op::ADC_A_L => {
                 self.adc(self.registers.l);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x8E => {
+            op::ADC_A_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.adc(mem_val);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x8F => {
+            op::ADC_A_A => {
                 self.adc(self.registers.a);
                 Some((self.pc.wrapping_add(1), 4))
             }
 
-            0x90 => {
+            op::SUB_B => {
                 self.sub(self.registers.b);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x91 => {
+            op::SUB_C => {
                 self.sub(self.registers.c);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x92 => {
+            op::SUB_D => {
                 self.sub(self.registers.d);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x93 => {
+            op::SUB_E => {
                 self.sub(self.registers.e);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x94 => {
+            op::SUB_H => {
                 self.sub(self.registers.h);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x95 => {
+            op::SUB_L => {
                 self.sub(self.registers.l);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x96 => {
+            op::SUB_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.sub(mem_val);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x97 => {
+            op::SUB_A => {
                 self.sub(self.registers.a);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x98 => {
+            op::SBC_A_B => {
                 self.sbc(self.registers.b);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x99 => {
+            op::SBC_A_C => {
                 self.sbc(self.registers.c);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x9A => {
+            op::SBC_A_D => {
                 self.sbc(self.registers.d);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x9B => {
+            op::SBC_A_E => {
                 self.sbc(self.registers.e);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x9C => {
+            op::SBC_A_H => {
                 self.sbc(self.registers.h);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x9D => {
+            op::SBC_A_L => {
                 self.sbc(self.registers.l);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x9E => {
+            op::SBC_A_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.sbc(mem_val);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x9F => {
+            op::SBC_A_A => {
                 self.sbc(self.registers.a);
                 Some((self.pc.wrapping_add(1), 4))
             }
 
-            0xA0 => {
+            op::AND_B => {
                 self.and(self.registers.b);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xA1 => {
+            op::AND_C => {
                 self.and(self.registers.c);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xA2 => {
+            op::AND_D => {
                 self.and(self.registers.d);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xA3 => {
+            op::AND_E => {
                 self.and(self.registers.e);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xA4 => {
+            op::AND_H => {
                 self.and(self.registers.h);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xA5 => {
+            op::AND_L => {
                 self.and(self.registers.l);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xA6 => {
+            op::AND_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.and(mem_val);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0xA7 => {
+            op::AND_A => {
                 self.and(self.registers.a);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xA8 => {
+            op::XOR_B => {
                 self.xor(self.registers.b);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xA9 => {
+            op::XOR_C => {
                 self.xor(self.registers.c);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xAA => {
+            op::XOR_D => {
                 self.xor(self.registers.d);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xAB => {
+            op::XOR_E => {
                 self.xor(self.registers.e);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xAC => {
+            op::XOR_H => {
                 self.xor(self.registers.h);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xAD => {
+            op::XOR_L => {
                 self.xor(self.registers.l);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xAE => {
+            op::XOR_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.xor(mem_val);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0xAF => {
+            op::XOR_A => {
                 self.xor(self.registers.a);
                 Some((self.pc.wrapping_add(1), 4))
             }
 
-            0xB0 => {
+            op::OR_B => {
                 self.or(self.registers.b);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xB1 => {
+            op::OR_C => {
                 self.or(self.registers.c);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xB2 => {
+            op::OR_D => {
                 self.or(self.registers.d);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xB3 => {
+            op::OR_E => {
                 self.or(self.registers.e);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xB4 => {
+            op::OR_H => {
                 self.or(self.registers.h);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xB5 => {
+            op::OR_L => {
                 self.or(self.registers.l);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xB6 => {
+            op::OR_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.or(mem_val);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0xB7 => {
+            op::OR_A => {
                 self.or(self.registers.a);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xB8 => {
+            op::CP_B => {
                 self.cp(self.registers.b);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xB9 => {
+            op::CP_C => {
                 self.cp(self.registers.c);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xBA => {
+            op::CP_D => {
                 self.cp(self.registers.d);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xBB => {
+            op::CP_E => {
                 self.cp(self.registers.e);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xBC => {
+            op::CP_H => {
                 self.cp(self.registers.h);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xBD => {
+            op::CP_L => {
                 self.cp(self.registers.l);
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xBE => {
+            op::CP_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.cp(mem_val);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0xBF => {
+            op::CP_A => {
                 self.cp(self.registers.a);
                 Some((self.pc.wrapping_add(1), 4))
             }
 
-            0xC6 => {
+            op::ADD_A_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.add(mem_val);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xD6 => {
+            op::SUB_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.sub(mem_val);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xE6 => {
+            op::AND_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.and(mem_val);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xF6 => {
+            op::OR_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.or(mem_val);
                 Some((self.pc.wrapping_add(2), 8))
             }
 
-            0xCE => {
+            op::ADC_A_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.adc(mem_val);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xDE => {
+            op::SBC_A_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.sbc(mem_val);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xEE => {
+            op::XOR_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.xor(mem_val);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xFE => {
+            op::CP_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.cp(mem_val);
                 Some((self.pc.wrapping_add(2), 8))
             }
 
-            0x20 => Some(self.jr(!self.registers.f.zero)),
-            0x30 => Some(self.jr(!self.registers.f.carry)),
-            0x18 => Some(self.jr(true)),
-            0x28 => Some(self.jr(self.registers.f.zero)),
-            0x38 => Some(self.jr(self.registers.f.carry)),
+            op::JR_NZ_R8 => Some(self.jr(!self.registers.f.zero)),
+            op::JR_NC_R8 => Some(self.jr(!self.registers.f.carry)),
+            op::JR_R8 => Some(self.jr(true)),
+            op::JR_Z_R8 => Some(self.jr(self.registers.f.zero)),
+            op::JR_C_R8 => Some(self.jr(self.registers.f.carry)),
 
-            0xC2 => Some(self.jp(!self.registers.f.zero)),
-            0xD2 => Some(self.jp(!self.registers.f.carry)),
-            0xC3 => Some(self.jp(true)),
-            0xCA => Some(self.jp(self.registers.f.zero)),
-            0xDA => Some(self.jp(self.registers.f.carry)),
+            op::JP_NZ_A16 => Some(self.jp(!self.registers.f.zero)),
+            op::JP_NC_A16 => Some(self.jp(!self.registers.f.carry)),
+            op::JP_A16 => Some(self.jp(true)),
+            op::JP_Z_A16 => Some(self.jp(self.registers.f.zero)),
+            op::JP_C_A16 => Some(self.jp(self.registers.f.carry)),
 
             // LDs
-            0x01 => {
+            op::LD_BC_D16 => {
                 let mem_val = self.read_two_bytes(self.pc.wrapping_add(1));
                 self.registers.set_bc(mem_val);
                 Some((self.pc.wrapping_add(3), 12))
             }
-            0x11 => {
+            op::LD_DE_D16 => {
                 let mem_val = self.read_two_bytes(self.pc.wrapping_add(1));
                 self.registers.set_de(mem_val);
                 Some((self.pc.wrapping_add(3), 12))
             }
-            0x21 => {
+            op::LD_HL_D16 => {
                 let mem_val = self.read_two_bytes(self.pc.wrapping_add(1));
                 self.registers.set_hl(mem_val);
                 Some((self.pc.wrapping_add(3), 12))
             }
-            0x31 => {
+            op::LD_SP_D16 => {
                 self.sp = self.read_two_bytes(self.pc.wrapping_add(1));
                 Some((self.pc.wrapping_add(3), 12))
             }
-            0x02 => {
+            op::LD_BC_IND_A => {
                 self.write_byte(self.registers.get_bc(), self.registers.a);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x12 => {
+            op::LD_DE_IND_A => {
                 self.write_byte(self.registers.get_de(), self.registers.a);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x22 => {
+            op::LD_HLI_A => {
                 let hl_reg_val = self.registers.get_hl();
                 self.write_byte(hl_reg_val, self.registers.a);
                 self.registers.set_hl(hl_reg_val.wrapping_add(1));
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x32 => {
+            op::LD_HLD_A => {
                 let hl_reg_val = self.registers.get_hl();
                 self.write_byte(hl_reg_val, self.registers.a);
                 self.registers.set_hl(hl_reg_val.wrapping_sub(1));
                 Some((self.pc.wrapping_add(1), 8))
             }
 
-            0x06 => {
+            op::LD_B_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.registers.b = mem_val;
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x16 => {
+            op::LD_D_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.registers.d = mem_val;
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x26 => {
+            op::LD_H_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.registers.h = mem_val;
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x36 => {
+            op::LD_HL_IND_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.write_byte(self.registers.get_hl(), mem_val);
                 Some((self.pc.wrapping_add(2), 12))
             }
 
-            0x08 => {
+            op::LD_A16_IND_SP => {
                 let val = self.read_two_bytes(self.pc.wrapping_add(1));
                 self.write_two_bytes(val, self.sp);
                 Some((self.pc.wrapping_add(3), 20))
             }
 
-            0x0A => {
+            op::LD_A_BC_IND => {
                 self.registers.a = self.read_byte(self.registers.get_bc());
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x1A => {
+            op::LD_A_DE_IND => {
                 self.registers.a = self.read_byte(self.registers.get_de());
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x2A => {
+            op::LD_A_HLI => {
                 let hl_reg_val = self.registers.get_hl();
                 self.registers.a = self.read_byte(hl_reg_val);
                 self.registers.set_hl(hl_reg_val.wrapping_add(1));
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x3A => {
+            op::LD_A_HLD => {
                 let hl_reg_val = self.registers.get_hl();
                 self.registers.a = self.read_byte(hl_reg_val);
                 self.registers.set_hl(hl_reg_val.wrapping_sub(1));
                 Some((self.pc.wrapping_add(1), 8))
             }
 
-            0x0E => {
+            op::LD_C_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.registers.c = mem_val;
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x1E => {
+            op::LD_E_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.registers.e = mem_val;
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x2E => {
+            op::LD_L_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.registers.l = mem_val;
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x3E => {
+            op::LD_A_D8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.registers.a = mem_val;
                 Some((self.pc.wrapping_add(2), 8))
             }
 
-            0x40 => {
+            op::LD_B_B => {
                 self.registers.b = self.registers.b;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x41 => {
+            op::LD_B_C => {
                 self.registers.b = self.registers.c;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x42 => {
+            op::LD_B_D => {
                 self.registers.b = self.registers.d;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x43 => {
+            op::LD_B_E => {
                 self.registers.b = self.registers.e;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x44 => {
+            op::LD_B_H => {
                 self.registers.b = self.registers.h;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x45 => {
+            op::LD_B_L => {
                 self.registers.b = self.registers.l;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x46 => {
+            op::LD_B_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.registers.b = mem_val;
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x47 => {
+            op::LD_B_A => {
                 self.registers.b = self.registers.a;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x48 => {
+            op::LD_C_B => {
                 self.registers.c = self.registers.b;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x49 => {
+            op::LD_C_C => {
                 self.registers.c = self.registers.c;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x4A => {
+            op::LD_C_D => {
                 self.registers.c = self.registers.d;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x4B => {
+            op::LD_C_E => {
                 self.registers.c = self.registers.e;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x4C => {
+            op::LD_C_H => {
                 self.registers.c = self.registers.h;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x4D => {
+            op::LD_C_L => {
                 self.registers.c = self.registers.l;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x4E => {
+            op::LD_C_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.registers.c = mem_val;
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x4F => {
+            op::LD_C_A => {
                 self.registers.c = self.registers.a;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x50 => {
+            op::LD_D_B => {
                 self.registers.d = self.registers.b;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x51 => {
+            op::LD_D_C => {
                 self.registers.d = self.registers.c;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x52 => {
+            op::LD_D_D => {
                 self.registers.d = self.registers.d;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x53 => {
+            op::LD_D_E => {
                 self.registers.d = self.registers.e;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x54 => {
+            op::LD_D_H => {
                 self.registers.d = self.registers.h;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x55 => {
+            op::LD_D_L => {
                 self.registers.d = self.registers.l;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x56 => {
+            op::LD_D_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.registers.d = mem_val;
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x57 => {
+            op::LD_D_A => {
                 self.registers.d = self.registers.a;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x58 => {
+            op::LD_E_B => {
                 self.registers.e = self.registers.b;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x59 => {
+            op::LD_E_C => {
                 self.registers.e = self.registers.c;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x5A => {
+            op::LD_E_D => {
                 self.registers.e = self.registers.d;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x5B => {
+            op::LD_E_E => {
                 self.registers.e = self.registers.e;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x5C => {
+            op::LD_E_H => {
                 self.registers.e = self.registers.h;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x5D => {
+            op::LD_E_L => {
                 self.registers.e = self.registers.l;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x5E => {
+            op::LD_E_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.registers.e = mem_val;
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x5F => {
+            op::LD_E_A => {
                 self.registers.e = self.registers.a;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x60 => {
+            op::LD_H_B => {
                 self.registers.h = self.registers.b;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x61 => {
+            op::LD_H_C => {
                 self.registers.h = self.registers.c;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x62 => {
+            op::LD_H_D => {
                 self.registers.h = self.registers.d;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x63 => {
+            op::LD_H_E => {
                 self.registers.h = self.registers.e;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x64 => {
+            op::LD_H_H => {
                 self.registers.h = self.registers.h;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x65 => {
+            op::LD_H_L => {
                 self.registers.h = self.registers.l;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x66 => {
+            op::LD_H_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.registers.h = mem_val;
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x67 => {
+            op::LD_H_A => {
                 self.registers.h = self.registers.a;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x68 => {
+            op::LD_L_B => {
                 self.registers.l = self.registers.b;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x69 => {
+            op::LD_L_C => {
                 self.registers.l = self.registers.c;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x6A => {
+            op::LD_L_D => {
                 self.registers.l = self.registers.d;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x6B => {
+            op::LD_L_E => {
                 self.registers.l = self.registers.e;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x6C => {
+            op::LD_L_H => {
                 self.registers.l = self.registers.h;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x6D => {
+            op::LD_L_L => {
                 self.registers.l = self.registers.l;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x6E => {
+            op::LD_L_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.registers.l = mem_val;
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x6F => {
+            op::LD_L_A => {
                 self.registers.l = self.registers.a;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x70 => {
+            op::LD_HL_IND_B => {
                 self.write_byte(self.registers.get_hl(), self.registers.b);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x71 => {
+            op::LD_HL_IND_C => {
                 self.write_byte(self.registers.get_hl(), self.registers.c);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x72 => {
+            op::LD_HL_IND_D => {
                 self.write_byte(self.registers.get_hl(), self.registers.d);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x73 => {
+            op::LD_HL_IND_E => {
                 self.write_byte(self.registers.get_hl(), self.registers.e);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x74 => {
+            op::LD_HL_IND_H => {
                 self.write_byte(self.registers.get_hl(), self.registers.h);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x75 => {
+            op::LD_HL_IND_L => {
                 self.write_byte(self.registers.get_hl(), self.registers.l);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x76 => {
+            op::HALT => {
                 self.is_halted = true;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x77 => {
+            op::LD_HL_IND_A => {
                 self.write_byte(self.registers.get_hl(), self.registers.a);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x78 => {
+            op::LD_A_B => {
                 self.registers.a = self.registers.b;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x79 => {
+            op::LD_A_C => {
                 self.registers.a = self.registers.c;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x7A => {
+            op::LD_A_D => {
                 self.registers.a = self.registers.d;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x7B => {
+            op::LD_A_E => {
                 self.registers.a = self.registers.e;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x7C => {
+            op::LD_A_H => {
                 self.registers.a = self.registers.h;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x7D => {
+            op::LD_A_L => {
                 self.registers.a = self.registers.l;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0x7E => {
+            op::LD_A_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.registers.a = mem_val;
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0x7F => {
+            op::LD_A_A => {
                 self.registers.a = self.registers.a;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xE0 => {
+            op::LDH_A8_IND_A => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.write_byte(0xFF00 + mem_val as u16, self.registers.a);
                 Some((self.pc.wrapping_add(2), 12))
             }
-            0xF0 => {
+            op::LDH_A_IND_A8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 self.registers.a = self.read_byte(0xFF00 + mem_val as u16);
                 Some((self.pc.wrapping_add(2), 12))
             }
-            0xE2 => {
+            op::LD_C_IND_A => {
                 self.write_byte(0xFF00 + self.registers.c as u16, self.registers.a);
                 Some((self.pc.wrapping_add(1), 8))
             }
-            0xF2 => {
+            op::LD_A_C_IND => {
                 self.registers.a = self.read_byte(0xFF00 + self.registers.c as u16);
                 Some((self.pc.wrapping_add(1), 8))
             }
 
-            0xE8 => {
+            op::ADD_SP_R8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1)) as i8;
                 let init_sp = self.sp;
 
@@ -969,7 +973,7 @@ impl<B: Bus> CPU<B> {
                 Some((self.pc.wrapping_add(2), 16))
             }
 
-            0xF8 => {
+            op::LD_HL_SP_R8 => {
                 let mem_val = self.read_byte(self.pc.wrapping_add(1));
                 let val = mem_val;
                 self.registers.set_hl(add_u16_i8(self.sp, val as i8));
@@ -979,38 +983,38 @@ impl<B: Bus> CPU<B> {
                 self.registers.f.carry = ((self.sp & 0xFF).wrapping_add(val as u16)) > 0xFF;
                 Some((self.pc.wrapping_add(2), 12))
             }
-            0xF9 => {
+            op::LD_SP_HL => {
                 self.sp = self.registers.get_hl();
                 Some((self.pc.wrapping_add(1), 8))
             }
 
-            0xEA => {
+            op::LD_A16_IND_A => {
                 let val = self.read_two_bytes(self.pc.wrapping_add(1));
                 self.write_byte(val, self.registers.a);
                 Some((self.pc.wrapping_add(3), 16))
             }
-            0xFA => {
+            op::LD_A_A16_IND => {
                 let val = self.read_two_bytes(self.pc.wrapping_add(1));
                 self.registers.a = self.read_byte(val);
                 Some((self.pc.wrapping_add(3), 16))
             } // END LDs
 
-            0xC1 => {
+            op::POP_BC => {
                 let val = self.pop();
                 self.registers.set_bc(val);
                 Some((self.pc.wrapping_add(1), 12))
             }
-            0xD1 => {
+            op::POP_DE => {
                 let val = self.pop();
                 self.registers.set_de(val);
                 Some((self.pc.wrapping_add(1), 12))
             }
-            0xE1 => {
+            op::POP_HL => {
                 let val = self.pop();
                 self.registers.set_hl(val);
                 Some((self.pc.wrapping_add(1), 12))
             }
-            0xF1 => {
+            op::POP_AF => {
                 let val = self.pop();
                 self.registers.set_af(val);
                 self.registers.f.zero = ((val & 0xFF) >> 7) & 1 == 1;
@@ -1020,85 +1024,85 @@ impl<B: Bus> CPU<B> {
                 Some((self.pc.wrapping_add(1), 12))
             }
 
-            0xC5 => {
+            op::PUSH_BC => {
                 self.push(self.registers.get_bc());
                 Some((self.pc.wrapping_add(1), 16))
             }
-            0xD5 => {
+            op::PUSH_DE => {
                 self.push(self.registers.get_de());
                 Some((self.pc.wrapping_add(1), 16))
             }
-            0xE5 => {
+            op::PUSH_HL => {
                 self.push(self.registers.get_hl());
                 Some((self.pc.wrapping_add(1), 16))
             }
-            0xF5 => {
+            op::PUSH_AF => {
                 self.push(self.registers.get_af());
                 Some((self.pc.wrapping_add(1), 16))
             }
 
-            0xC0 => Some(self.ret(!self.registers.f.zero)),
-            0xD0 => Some(self.ret(!self.registers.f.carry)),
+            op::RET_NZ => Some(self.ret(!self.registers.f.zero)),
+            op::RET_NC => Some(self.ret(!self.registers.f.carry)),
 
-            0xC4 => Some(self.call(!self.registers.f.zero)),
-            0xD4 => Some(self.call(!self.registers.f.carry)),
+            op::CALL_NZ_A16 => Some(self.call(!self.registers.f.zero)),
+            op::CALL_NC_A16 => Some(self.call(!self.registers.f.carry)),
 
-            0xC8 => Some(self.ret(self.registers.f.zero)),
-            0xD8 => Some(self.ret(self.registers.f.carry)),
-            0xC9 => {
+            op::RET_Z => Some(self.ret(self.registers.f.zero)),
+            op::RET_C => Some(self.ret(self.registers.f.carry)),
+            op::RET => {
                 let (pc, _) = self.ret(true);
                 Some((pc, 16))
             }
-            0xD9 => {
+            op::RETI => {
                 self.ime = true;
                 let (pc, _) = self.ret(true);
                 Some((pc, 16))
             }
 
-            0xE9 => Some((self.registers.get_hl(), 4)),
+            op::JP_HL => Some((self.registers.get_hl(), 4)),
 
-            0xCC => Some(self.call(self.registers.f.zero)),
-            0xDC => Some(self.call(self.registers.f.carry)),
-            0xCD => Some(self.call(true)),
+            op::CALL_Z_A16 => Some(self.call(self.registers.f.zero)),
+            op::CALL_C_A16 => Some(self.call(self.registers.f.carry)),
+            op::CALL_A16 => Some(self.call(true)),
 
-            0xF3 => {
+            op::DI => {
                 self.ime = false;
                 Some((self.pc.wrapping_add(1), 4))
             }
-            0xFB => {
+            op::EI => {
                 self.enable_ime();
                 Some((self.pc.wrapping_add(1), 4))
             }
 
-            0xC7 => {
+            op::RST_00 => {
                 self.push(self.pc.wrapping_add(1));
                 Some((0x00, 16))
             }
-            0xD7 => {
+            op::RST_10 => {
                 self.push(self.pc.wrapping_add(1));
                 Some((0x10, 16))
             }
-            0xE7 => {
+            op::RST_20 => {
                 self.push(self.pc.wrapping_add(1));
                 Some((0x20, 16))
             }
-            0xF7 => {
+            op::RST_30 => {
                 self.push(self.pc.wrapping_add(1));
                 Some((0x30, 16))
             }
-            0xCF => {
+            op::RST_08 => {
                 self.push(self.pc.wrapping_add(1));
                 Some((0x08, 16))
             }
-            0xDF => {
+            op::RST_18 => {
                 self.push(self.pc.wrapping_add(1));
                 Some((0x18, 16))
             }
-            0xEF => {
+            op::RST_28 => {
                 self.push(self.pc.wrapping_add(1));
                 Some((0x28, 16))
             }
-            0xFF => {
+            op::RST_38 => {
                 self.push(self.pc.wrapping_add(1));
                 Some((0x38, 16))
             }
@@ -1109,1113 +1113,1113 @@ impl<B: Bus> CPU<B> {
 
     fn execute_prefixed(&mut self, instruction_byte: u8) -> Option<(u16, u8)> {
         match instruction_byte {
-            0x00 => {
+            cb::RLC_B => {
                 self.registers.b = self.rlc(self.registers.b);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x01 => {
+            cb::RLC_C => {
                 self.registers.c = self.rlc(self.registers.c);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x02 => {
+            cb::RLC_D => {
                 self.registers.d = self.rlc(self.registers.d);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x03 => {
+            cb::RLC_E => {
                 self.registers.e = self.rlc(self.registers.e);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x04 => {
+            cb::RLC_H => {
                 self.registers.h = self.rlc(self.registers.h);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x05 => {
+            cb::RLC_L => {
                 self.registers.l = self.rlc(self.registers.l);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x06 => {
+            cb::RLC_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.rlc(mem_val);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0x07 => {
+            cb::RLC_A => {
                 self.registers.a = self.rlc(self.registers.a);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x08 => {
+            cb::RRC_B => {
                 self.registers.b = self.rrc(self.registers.b);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x09 => {
+            cb::RRC_C => {
                 self.registers.c = self.rrc(self.registers.c);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x0A => {
+            cb::RRC_D => {
                 self.registers.d = self.rrc(self.registers.d);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x0B => {
+            cb::RRC_E => {
                 self.registers.e = self.rrc(self.registers.e);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x0C => {
+            cb::RRC_H => {
                 self.registers.h = self.rrc(self.registers.h);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x0D => {
+            cb::RRC_L => {
                 self.registers.l = self.rrc(self.registers.l);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x0E => {
+            cb::RRC_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.rrc(mem_val);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0x0F => {
+            cb::RRC_A => {
                 self.registers.a = self.rrc(self.registers.a);
                 Some((self.pc.wrapping_add(2), 8))
             }
 
-            0x10 => {
+            cb::RL_B => {
                 self.registers.b = self.rl(self.registers.b);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x11 => {
+            cb::RL_C => {
                 self.registers.c = self.rl(self.registers.c);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x12 => {
+            cb::RL_D => {
                 self.registers.d = self.rl(self.registers.d);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x13 => {
+            cb::RL_E => {
                 self.registers.e = self.rl(self.registers.e);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x14 => {
+            cb::RL_H => {
                 self.registers.h = self.rl(self.registers.h);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x15 => {
+            cb::RL_L => {
                 self.registers.l = self.rl(self.registers.l);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x16 => {
+            cb::RL_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.rl(mem_val);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0x17 => {
+            cb::RL_A => {
                 self.registers.a = self.rl(self.registers.a);
                 Some((self.pc.wrapping_add(2), 8))
             }
 
-            0x18 => {
+            cb::RR_B => {
                 self.registers.b = self.rr(self.registers.b);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x19 => {
+            cb::RR_C => {
                 self.registers.c = self.rr(self.registers.c);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x1A => {
+            cb::RR_D => {
                 self.registers.d = self.rr(self.registers.d);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x1B => {
+            cb::RR_E => {
                 self.registers.e = self.rr(self.registers.e);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x1C => {
+            cb::RR_H => {
                 self.registers.h = self.rr(self.registers.h);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x1D => {
+            cb::RR_L => {
                 self.registers.l = self.rr(self.registers.l);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x1E => {
+            cb::RR_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.rr(mem_val);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0x1F => {
+            cb::RR_A => {
                 self.registers.a = self.rr(self.registers.a);
                 Some((self.pc.wrapping_add(2), 8))
             }
 
-            0x20 => {
+            cb::SLA_B => {
                 self.registers.b = self.sla(self.registers.b);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x21 => {
+            cb::SLA_C => {
                 self.registers.c = self.sla(self.registers.c);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x22 => {
+            cb::SLA_D => {
                 self.registers.d = self.sla(self.registers.d);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x23 => {
+            cb::SLA_E => {
                 self.registers.e = self.sla(self.registers.e);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x24 => {
+            cb::SLA_H => {
                 self.registers.h = self.sla(self.registers.h);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x25 => {
+            cb::SLA_L => {
                 self.registers.l = self.sla(self.registers.l);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x26 => {
+            cb::SLA_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.sla(mem_val);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0x27 => {
+            cb::SLA_A => {
                 self.registers.a = self.sla(self.registers.a);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x28 => {
+            cb::SRA_B => {
                 self.registers.b = self.sra(self.registers.b);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x29 => {
+            cb::SRA_C => {
                 self.registers.c = self.sra(self.registers.c);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x2A => {
+            cb::SRA_D => {
                 self.registers.d = self.sra(self.registers.d);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x2B => {
+            cb::SRA_E => {
                 self.registers.e = self.sra(self.registers.e);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x2C => {
+            cb::SRA_H => {
                 self.registers.h = self.sra(self.registers.h);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x2D => {
+            cb::SRA_L => {
                 self.registers.l = self.sra(self.registers.l);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x2E => {
+            cb::SRA_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.sra(mem_val);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0x2F => {
+            cb::SRA_A => {
                 self.registers.a = self.sra(self.registers.a);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x30 => {
+            cb::SWAP_B => {
                 self.registers.b = self.swap(self.registers.b);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x31 => {
+            cb::SWAP_C => {
                 self.registers.c = self.swap(self.registers.c);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x32 => {
+            cb::SWAP_D => {
                 self.registers.d = self.swap(self.registers.d);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x33 => {
+            cb::SWAP_E => {
                 self.registers.e = self.swap(self.registers.e);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x34 => {
+            cb::SWAP_H => {
                 self.registers.h = self.swap(self.registers.h);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x35 => {
+            cb::SWAP_L => {
                 self.registers.l = self.swap(self.registers.l);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x36 => {
+            cb::SWAP_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.swap(mem_val);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0x37 => {
+            cb::SWAP_A => {
                 self.registers.a = self.swap(self.registers.a);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x38 => {
+            cb::SRL_B => {
                 self.registers.b = self.srl(self.registers.b);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x39 => {
+            cb::SRL_C => {
                 self.registers.c = self.srl(self.registers.c);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x3A => {
+            cb::SRL_D => {
                 self.registers.d = self.srl(self.registers.d);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x3B => {
+            cb::SRL_E => {
                 self.registers.e = self.srl(self.registers.e);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x3C => {
+            cb::SRL_H => {
                 self.registers.h = self.srl(self.registers.h);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x3D => {
+            cb::SRL_L => {
                 self.registers.l = self.srl(self.registers.l);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x3E => {
+            cb::SRL_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.srl(mem_val);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0x3F => {
+            cb::SRL_A => {
                 self.registers.a = self.srl(self.registers.a);
                 Some((self.pc.wrapping_add(2), 8))
             }
 
-            0x40 => {
+            cb::BIT_0_B => {
                 self.bit(self.registers.b, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x41 => {
+            cb::BIT_0_C => {
                 self.bit(self.registers.c, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x42 => {
+            cb::BIT_0_D => {
                 self.bit(self.registers.d, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x43 => {
+            cb::BIT_0_E => {
                 self.bit(self.registers.e, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x44 => {
+            cb::BIT_0_H => {
                 self.bit(self.registers.h, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x45 => {
+            cb::BIT_0_L => {
                 self.bit(self.registers.l, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x46 => {
+            cb::BIT_0_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.bit(mem_val, 0);
                 Some((self.pc.wrapping_add(2), 12))
             }
-            0x47 => {
+            cb::BIT_0_A => {
                 self.bit(self.registers.a, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x48 => {
+            cb::BIT_1_B => {
                 self.bit(self.registers.b, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x49 => {
+            cb::BIT_1_C => {
                 self.bit(self.registers.c, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x4A => {
+            cb::BIT_1_D => {
                 self.bit(self.registers.d, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x4B => {
+            cb::BIT_1_E => {
                 self.bit(self.registers.e, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x4C => {
+            cb::BIT_1_H => {
                 self.bit(self.registers.h, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x4D => {
+            cb::BIT_1_L => {
                 self.bit(self.registers.l, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x4E => {
+            cb::BIT_1_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.bit(mem_val, 1);
                 Some((self.pc.wrapping_add(2), 12))
             }
-            0x4F => {
+            cb::BIT_1_A => {
                 self.bit(self.registers.a, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x50 => {
+            cb::BIT_2_B => {
                 self.bit(self.registers.b, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x51 => {
+            cb::BIT_2_C => {
                 self.bit(self.registers.c, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x52 => {
+            cb::BIT_2_D => {
                 self.bit(self.registers.d, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x53 => {
+            cb::BIT_2_E => {
                 self.bit(self.registers.e, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x54 => {
+            cb::BIT_2_H => {
                 self.bit(self.registers.h, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x55 => {
+            cb::BIT_2_L => {
                 self.bit(self.registers.l, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x56 => {
+            cb::BIT_2_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.bit(mem_val, 2);
                 Some((self.pc.wrapping_add(2), 12))
             }
-            0x57 => {
+            cb::BIT_2_A => {
                 self.bit(self.registers.a, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x58 => {
+            cb::BIT_3_B => {
                 self.bit(self.registers.b, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x59 => {
+            cb::BIT_3_C => {
                 self.bit(self.registers.c, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x5A => {
+            cb::BIT_3_D => {
                 self.bit(self.registers.d, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x5B => {
+            cb::BIT_3_E => {
                 self.bit(self.registers.e, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x5C => {
+            cb::BIT_3_H => {
                 self.bit(self.registers.h, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x5D => {
+            cb::BIT_3_L => {
                 self.bit(self.registers.l, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x5E => {
+            cb::BIT_3_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.bit(mem_val, 3);
                 Some((self.pc.wrapping_add(2), 12))
             }
-            0x5F => {
+            cb::BIT_3_A => {
                 self.bit(self.registers.a, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x60 => {
+            cb::BIT_4_B => {
                 self.bit(self.registers.b, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x61 => {
+            cb::BIT_4_C => {
                 self.bit(self.registers.c, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x62 => {
+            cb::BIT_4_D => {
                 self.bit(self.registers.d, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x63 => {
+            cb::BIT_4_E => {
                 self.bit(self.registers.e, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x64 => {
+            cb::BIT_4_H => {
                 self.bit(self.registers.h, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x65 => {
+            cb::BIT_4_L => {
                 self.bit(self.registers.l, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x66 => {
+            cb::BIT_4_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.bit(mem_val, 4);
                 Some((self.pc.wrapping_add(2), 12))
             }
-            0x67 => {
+            cb::BIT_4_A => {
                 self.bit(self.registers.a, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x68 => {
+            cb::BIT_5_B => {
                 self.bit(self.registers.b, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x69 => {
+            cb::BIT_5_C => {
                 self.bit(self.registers.c, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x6A => {
+            cb::BIT_5_D => {
                 self.bit(self.registers.d, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x6B => {
+            cb::BIT_5_E => {
                 self.bit(self.registers.e, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x6C => {
+            cb::BIT_5_H => {
                 self.bit(self.registers.h, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x6D => {
+            cb::BIT_5_L => {
                 self.bit(self.registers.l, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x6E => {
+            cb::BIT_5_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.bit(mem_val, 5);
                 Some((self.pc.wrapping_add(2), 12))
             }
-            0x6F => {
+            cb::BIT_5_A => {
                 self.bit(self.registers.a, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x70 => {
+            cb::BIT_6_B => {
                 self.bit(self.registers.b, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x71 => {
+            cb::BIT_6_C => {
                 self.bit(self.registers.c, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x72 => {
+            cb::BIT_6_D => {
                 self.bit(self.registers.d, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x73 => {
+            cb::BIT_6_E => {
                 self.bit(self.registers.e, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x74 => {
+            cb::BIT_6_H => {
                 self.bit(self.registers.h, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x75 => {
+            cb::BIT_6_L => {
                 self.bit(self.registers.l, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x76 => {
+            cb::BIT_6_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.bit(mem_val, 6);
                 Some((self.pc.wrapping_add(2), 12))
             }
-            0x77 => {
+            cb::BIT_6_A => {
                 self.bit(self.registers.a, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x78 => {
+            cb::BIT_7_B => {
                 self.bit(self.registers.b, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x79 => {
+            cb::BIT_7_C => {
                 self.bit(self.registers.c, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x7A => {
+            cb::BIT_7_D => {
                 self.bit(self.registers.d, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x7B => {
+            cb::BIT_7_E => {
                 self.bit(self.registers.e, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x7C => {
+            cb::BIT_7_H => {
                 self.bit(self.registers.h, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x7D => {
+            cb::BIT_7_L => {
                 self.bit(self.registers.l, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x7E => {
+            cb::BIT_7_HL_IND => {
                 let mem_val = self.read_byte(self.registers.get_hl());
                 self.bit(mem_val, 7);
                 Some((self.pc.wrapping_add(2), 12))
             }
-            0x7F => {
+            cb::BIT_7_A => {
                 self.bit(self.registers.a, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
 
-            0x80 => {
+            cb::RES_0_B => {
                 self.registers.b = self.reset(self.registers.b, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x81 => {
+            cb::RES_0_C => {
                 self.registers.c = self.reset(self.registers.c, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x82 => {
+            cb::RES_0_D => {
                 self.registers.d = self.reset(self.registers.d, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x83 => {
+            cb::RES_0_E => {
                 self.registers.e = self.reset(self.registers.e, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x84 => {
+            cb::RES_0_H => {
                 self.registers.h = self.reset(self.registers.h, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x85 => {
+            cb::RES_0_L => {
                 self.registers.l = self.reset(self.registers.l, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x86 => {
+            cb::RES_0_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.reset(mem_val, 0);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0x87 => {
+            cb::RES_0_A => {
                 self.registers.a = self.reset(self.registers.a, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x88 => {
+            cb::RES_1_B => {
                 self.registers.b = self.reset(self.registers.b, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x89 => {
+            cb::RES_1_C => {
                 self.registers.c = self.reset(self.registers.c, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x8A => {
+            cb::RES_1_D => {
                 self.registers.d = self.reset(self.registers.d, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x8B => {
+            cb::RES_1_E => {
                 self.registers.e = self.reset(self.registers.e, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x8C => {
+            cb::RES_1_H => {
                 self.registers.h = self.reset(self.registers.h, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x8D => {
+            cb::RES_1_L => {
                 self.registers.l = self.reset(self.registers.l, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x8E => {
+            cb::RES_1_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.reset(mem_val, 1);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0x8F => {
+            cb::RES_1_A => {
                 self.registers.a = self.reset(self.registers.a, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x90 => {
+            cb::RES_2_B => {
                 self.registers.b = self.reset(self.registers.b, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x91 => {
+            cb::RES_2_C => {
                 self.registers.c = self.reset(self.registers.c, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x92 => {
+            cb::RES_2_D => {
                 self.registers.d = self.reset(self.registers.d, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x93 => {
+            cb::RES_2_E => {
                 self.registers.e = self.reset(self.registers.e, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x94 => {
+            cb::RES_2_H => {
                 self.registers.h = self.reset(self.registers.h, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x95 => {
+            cb::RES_2_L => {
                 self.registers.l = self.reset(self.registers.l, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x96 => {
+            cb::RES_2_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.reset(mem_val, 2);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0x97 => {
+            cb::RES_2_A => {
                 self.registers.a = self.reset(self.registers.a, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x98 => {
+            cb::RES_3_B => {
                 self.registers.b = self.reset(self.registers.b, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x99 => {
+            cb::RES_3_C => {
                 self.registers.c = self.reset(self.registers.c, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x9A => {
+            cb::RES_3_D => {
                 self.registers.d = self.reset(self.registers.d, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x9B => {
+            cb::RES_3_E => {
                 self.registers.e = self.reset(self.registers.e, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x9C => {
+            cb::RES_3_H => {
                 self.registers.h = self.reset(self.registers.h, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x9D => {
+            cb::RES_3_L => {
                 self.registers.l = self.reset(self.registers.l, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0x9E => {
+            cb::RES_3_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.reset(mem_val, 3);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0x9F => {
+            cb::RES_3_A => {
                 self.registers.a = self.reset(self.registers.a, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xA0 => {
+            cb::RES_4_B => {
                 self.registers.b = self.reset(self.registers.b, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xA1 => {
+            cb::RES_4_C => {
                 self.registers.c = self.reset(self.registers.c, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xA2 => {
+            cb::RES_4_D => {
                 self.registers.d = self.reset(self.registers.d, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xA3 => {
+            cb::RES_4_E => {
                 self.registers.e = self.reset(self.registers.e, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xA4 => {
+            cb::RES_4_H => {
                 self.registers.h = self.reset(self.registers.h, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xA5 => {
+            cb::RES_4_L => {
                 self.registers.l = self.reset(self.registers.l, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xA6 => {
+            cb::RES_4_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.reset(mem_val, 4);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0xA7 => {
+            cb::RES_4_A => {
                 self.registers.a = self.reset(self.registers.a, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xA8 => {
+            cb::RES_5_B => {
                 self.registers.b = self.reset(self.registers.b, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xA9 => {
+            cb::RES_5_C => {
                 self.registers.c = self.reset(self.registers.c, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xAA => {
+            cb::RES_5_D => {
                 self.registers.d = self.reset(self.registers.d, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xAB => {
+            cb::RES_5_E => {
                 self.registers.e = self.reset(self.registers.e, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xAC => {
+            cb::RES_5_H => {
                 self.registers.h = self.reset(self.registers.h, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xAD => {
+            cb::RES_5_L => {
                 self.registers.l = self.reset(self.registers.l, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xAE => {
+            cb::RES_5_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.reset(mem_val, 5);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0xAF => {
+            cb::RES_5_A => {
                 self.registers.a = self.reset(self.registers.a, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xB0 => {
+            cb::RES_6_B => {
                 self.registers.b = self.reset(self.registers.b, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xB1 => {
+            cb::RES_6_C => {
                 self.registers.c = self.reset(self.registers.c, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xB2 => {
+            cb::RES_6_D => {
                 self.registers.d = self.reset(self.registers.d, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xB3 => {
+            cb::RES_6_E => {
                 self.registers.e = self.reset(self.registers.e, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xB4 => {
+            cb::RES_6_H => {
                 self.registers.h = self.reset(self.registers.h, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xB5 => {
+            cb::RES_6_L => {
                 self.registers.l = self.reset(self.registers.l, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xB6 => {
+            cb::RES_6_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.reset(mem_val, 6);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0xB7 => {
+            cb::RES_6_A => {
                 self.registers.a = self.reset(self.registers.a, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xB8 => {
+            cb::RES_7_B => {
                 self.registers.b = self.reset(self.registers.b, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xB9 => {
+            cb::RES_7_C => {
                 self.registers.c = self.reset(self.registers.c, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xBA => {
+            cb::RES_7_D => {
                 self.registers.d = self.reset(self.registers.d, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xBB => {
+            cb::RES_7_E => {
                 self.registers.e = self.reset(self.registers.e, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xBC => {
+            cb::RES_7_H => {
                 self.registers.h = self.reset(self.registers.h, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xBD => {
+            cb::RES_7_L => {
                 self.registers.l = self.reset(self.registers.l, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xBE => {
+            cb::RES_7_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.reset(mem_val, 7);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0xBF => {
+            cb::RES_7_A => {
                 self.registers.a = self.reset(self.registers.a, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
 
-            0xC0 => {
+            cb::SET_0_B => {
                 self.registers.b = self.set(self.registers.b, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xC1 => {
+            cb::SET_0_C => {
                 self.registers.c = self.set(self.registers.c, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xC2 => {
+            cb::SET_0_D => {
                 self.registers.d = self.set(self.registers.d, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xC3 => {
+            cb::SET_0_E => {
                 self.registers.e = self.set(self.registers.e, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xC4 => {
+            cb::SET_0_H => {
                 self.registers.h = self.set(self.registers.h, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xC5 => {
+            cb::SET_0_L => {
                 self.registers.l = self.set(self.registers.l, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xC6 => {
+            cb::SET_0_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.set(mem_val, 0);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0xC7 => {
+            cb::SET_0_A => {
                 self.registers.a = self.set(self.registers.a, 0);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xC8 => {
+            cb::SET_1_B => {
                 self.registers.b = self.set(self.registers.b, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xC9 => {
+            cb::SET_1_C => {
                 self.registers.c = self.set(self.registers.c, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xCA => {
+            cb::SET_1_D => {
                 self.registers.d = self.set(self.registers.d, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xCB => {
+            cb::SET_1_E => {
                 self.registers.e = self.set(self.registers.e, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xCC => {
+            cb::SET_1_H => {
                 self.registers.h = self.set(self.registers.h, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xCD => {
+            cb::SET_1_L => {
                 self.registers.l = self.set(self.registers.l, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xCE => {
+            cb::SET_1_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.set(mem_val, 1);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0xCF => {
+            cb::SET_1_A => {
                 self.registers.a = self.set(self.registers.a, 1);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xD0 => {
+            cb::SET_2_B => {
                 self.registers.b = self.set(self.registers.b, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xD1 => {
+            cb::SET_2_C => {
                 self.registers.c = self.set(self.registers.c, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xD2 => {
+            cb::SET_2_D => {
                 self.registers.d = self.set(self.registers.d, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xD3 => {
+            cb::SET_2_E => {
                 self.registers.e = self.set(self.registers.e, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xD4 => {
+            cb::SET_2_H => {
                 self.registers.h = self.set(self.registers.h, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xD5 => {
+            cb::SET_2_L => {
                 self.registers.l = self.set(self.registers.l, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xD6 => {
+            cb::SET_2_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.set(mem_val, 2);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0xD7 => {
+            cb::SET_2_A => {
                 self.registers.a = self.set(self.registers.a, 2);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xD8 => {
+            cb::SET_3_B => {
                 self.registers.b = self.set(self.registers.b, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xD9 => {
+            cb::SET_3_C => {
                 self.registers.c = self.set(self.registers.c, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xDA => {
+            cb::SET_3_D => {
                 self.registers.d = self.set(self.registers.d, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xDB => {
+            cb::SET_3_E => {
                 self.registers.e = self.set(self.registers.e, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xDC => {
+            cb::SET_3_H => {
                 self.registers.h = self.set(self.registers.h, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xDD => {
+            cb::SET_3_L => {
                 self.registers.l = self.set(self.registers.l, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xDE => {
+            cb::SET_3_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.set(mem_val, 3);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0xDF => {
+            cb::SET_3_A => {
                 self.registers.a = self.set(self.registers.a, 3);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xE0 => {
+            cb::SET_4_B => {
                 self.registers.b = self.set(self.registers.b, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xE1 => {
+            cb::SET_4_C => {
                 self.registers.c = self.set(self.registers.c, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xE2 => {
+            cb::SET_4_D => {
                 self.registers.d = self.set(self.registers.d, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xE3 => {
+            cb::SET_4_E => {
                 self.registers.e = self.set(self.registers.e, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xE4 => {
+            cb::SET_4_H => {
                 self.registers.h = self.set(self.registers.h, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xE5 => {
+            cb::SET_4_L => {
                 self.registers.l = self.set(self.registers.l, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xE6 => {
+            cb::SET_4_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.set(mem_val, 4);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0xE7 => {
+            cb::SET_4_A => {
                 self.registers.a = self.set(self.registers.a, 4);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xE8 => {
+            cb::SET_5_B => {
                 self.registers.b = self.set(self.registers.b, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xE9 => {
+            cb::SET_5_C => {
                 self.registers.c = self.set(self.registers.c, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xEA => {
+            cb::SET_5_D => {
                 self.registers.d = self.set(self.registers.d, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xEB => {
+            cb::SET_5_E => {
                 self.registers.e = self.set(self.registers.e, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xEC => {
+            cb::SET_5_H => {
                 self.registers.h = self.set(self.registers.h, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xED => {
+            cb::SET_5_L => {
                 self.registers.l = self.set(self.registers.l, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xEE => {
+            cb::SET_5_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.set(mem_val, 5);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0xEF => {
+            cb::SET_5_A => {
                 self.registers.a = self.set(self.registers.a, 5);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xF0 => {
+            cb::SET_6_B => {
                 self.registers.b = self.set(self.registers.b, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xF1 => {
+            cb::SET_6_C => {
                 self.registers.c = self.set(self.registers.c, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xF2 => {
+            cb::SET_6_D => {
                 self.registers.d = self.set(self.registers.d, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xF3 => {
+            cb::SET_6_E => {
                 self.registers.e = self.set(self.registers.e, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xF4 => {
+            cb::SET_6_H => {
                 self.registers.h = self.set(self.registers.h, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xF5 => {
+            cb::SET_6_L => {
                 self.registers.l = self.set(self.registers.l, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xF6 => {
+            cb::SET_6_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.set(mem_val, 6);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0xF7 => {
+            cb::SET_6_A => {
                 self.registers.a = self.set(self.registers.a, 6);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xF8 => {
+            cb::SET_7_B => {
                 self.registers.b = self.set(self.registers.b, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xF9 => {
+            cb::SET_7_C => {
                 self.registers.c = self.set(self.registers.c, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xFA => {
+            cb::SET_7_D => {
                 self.registers.d = self.set(self.registers.d, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xFB => {
+            cb::SET_7_E => {
                 self.registers.e = self.set(self.registers.e, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xFC => {
+            cb::SET_7_H => {
                 self.registers.h = self.set(self.registers.h, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xFD => {
+            cb::SET_7_L => {
                 self.registers.l = self.set(self.registers.l, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
-            0xFE => {
+            cb::SET_7_HL_IND => {
                 let hl_reg_val = self.registers.get_hl();
                 let mem_val = self.read_byte(hl_reg_val);
                 let new_val = self.set(mem_val, 7);
                 self.write_byte(hl_reg_val, new_val);
                 Some((self.pc.wrapping_add(2), 16))
             }
-            0xFF => {
+            cb::SET_7_A => {
                 self.registers.a = self.set(self.registers.a, 7);
                 Some((self.pc.wrapping_add(2), 8))
             }
@@ -2260,7 +2264,7 @@ impl<B: Bus> CPU<B> {
         }
 
         let (next_pc, cycles) = match self.read_byte(self.pc) {
-            INSTRUCTION_PREFIX => {
+            cb::PREFIX => {
                 let byte = self.read_byte(self.pc + 1);
                 match self.execute_prefixed(byte) {
                     Some((next_pc, cycles)) => (next_pc, cycles),
