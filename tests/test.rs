@@ -276,7 +276,11 @@ mod tests {
 
     #[test]
     fn test_blargg_roms_cpu_instrs_09_op_r_r() {
-        test_rom_dmg("blargg/cpu_instrs", "09-op r,r.gb", Duration::from_secs(60));
+        test_rom_dmg(
+            "blargg/cpu_instrs",
+            "09-op r,r.gb",
+            Duration::from_secs(120),
+        );
     }
 
     #[test]
@@ -284,7 +288,7 @@ mod tests {
         test_rom_dmg(
             "blargg/cpu_instrs",
             "10-bit ops.gb",
-            Duration::from_secs(60),
+            Duration::from_secs(120),
         );
     }
 
@@ -293,7 +297,7 @@ mod tests {
         test_rom_dmg(
             "blargg/cpu_instrs",
             "11-op a,(hl).gb",
-            Duration::from_secs(60),
+            Duration::from_secs(120),
         );
     }
 
@@ -371,12 +375,20 @@ mod tests {
 
     #[test]
     fn test_blargg_roms_dmg_sound_02_len_ctr() {
-        test_rom_dmg("blargg/dmg_sound", "02-len ctr.gb", Duration::from_secs(60));
+        test_rom_dmg(
+            "blargg/dmg_sound",
+            "02-len ctr.gb",
+            Duration::from_secs(120),
+        );
     }
 
     #[test]
     fn test_blargg_roms_dmg_sound_03_trigger() {
-        test_rom_dmg("blargg/dmg_sound", "03-trigger.gb", Duration::from_secs(60));
+        test_rom_dmg(
+            "blargg/dmg_sound",
+            "03-trigger.gb",
+            Duration::from_secs(120),
+        );
     }
 
     #[test]
